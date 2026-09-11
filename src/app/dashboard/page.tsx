@@ -20,7 +20,12 @@ import {
   X,
   PieChart as PieIcon,
 } from "lucide-react";
-import { Merchant, PaymentMethod, Transaction } from "@/types/database";
+import {
+  Merchant,
+  PaymentMethod,
+  Transaction,
+  TransactionType,
+} from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import PaymentMethodsChart from "@/components/PaymentMethodsChart";
 
@@ -61,18 +66,18 @@ export default function DashboardPage() {
   // Estados del Formulario de Creación
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState<"sale" | "expense">("sale");
+  const [type, setType] = useState<TransactionType>("income");
   const [submitting, setSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Efectivo");
 
-  // Estado del filtro para la gráfica ('sale' o 'expense')
-  const [chartType, setChartType] = useState<"sale" | "expense">("sale");
+  // Estado del filtro para la gráfica ('income' o 'expense')
+  const [chartType, setChartType] = useState<TransactionType>("income");
 
   // Estados para Edición
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editDescription, setEditDescription] = useState("");
-  const [editType, setEditType] = useState<"sale" | "expense">("sale");
+  const [editType, setEditType] = useState<TransactionType>("income");
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("Efectivo");
 
   // Estado para Eliminación
@@ -188,7 +193,7 @@ export default function DashboardPage() {
     setEditingTx(tx);
     setEditAmount(String(tx.amount));
     setEditDescription(tx.description || "");
-    setEditType(tx.type);
+    setEditType(tx.type === "expense" ? "expense" : "income");
     setEditPaymentMethod(tx.payment_method || "Efectivo");
   };
 
@@ -246,9 +251,12 @@ export default function DashboardPage() {
     router.push("/login");
   };
 
+  // Helper para identificar ventas (income o legacy sale)
+  const isIncome = (t: Transaction) => t.type === "income" || t.type === "sale";
+
   // Cálculos de métricas del día seleccionado
   const totalIncome = transactions
-    .filter((t) => t.type === "sale")
+    .filter(isIncome)
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalExpense = transactions
@@ -258,7 +266,9 @@ export default function DashboardPage() {
   const balance = totalIncome - totalExpense;
 
   // Filtrar transacciones para la gráfica según la pestaña activa
-  const chartTransactions = transactions.filter((t) => t.type === chartType);
+  const chartTransactions = transactions.filter((t) =>
+    chartType === "income" ? isIncome(t) : t.type === "expense",
+  );
 
   if (loading) {
     return (
@@ -416,9 +426,9 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
               <button
                 type="button"
-                onClick={() => setType("sale")}
+                onClick={() => setType("income")}
                 className={`py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
-                  type === "sale"
+                  type === "income"
                     ? "bg-emerald-600 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
                 }`}
@@ -491,7 +501,7 @@ export default function DashboardPage() {
               type="submit"
               disabled={submitting || !amount}
               className={`w-full py-3 font-bold text-white rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 ${
-                type === "sale"
+                type === "income"
                   ? "bg-emerald-600 hover:bg-emerald-700"
                   : "bg-rose-600 hover:bg-rose-700"
               } disabled:opacity-50`}
@@ -499,7 +509,7 @@ export default function DashboardPage() {
               {submitting ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <span>Guardar {type === "sale" ? "Venta" : "Gasto"}</span>
+                <span>Guardar {type === "income" ? "Venta" : "Gasto"}</span>
               )}
             </button>
           </form>
@@ -530,12 +540,12 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
                       className={`p-2 rounded-lg shrink-0 ${
-                        tx.type === "sale"
+                        isIncome(tx)
                           ? "bg-emerald-100 text-emerald-700"
                           : "bg-rose-100 text-rose-700"
                       }`}
                     >
-                      {tx.type === "sale" ? (
+                      {isIncome(tx) ? (
                         <Plus className="w-4 h-4" />
                       ) : (
                         <Minus className="w-4 h-4" />
@@ -544,7 +554,7 @@ export default function DashboardPage() {
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-slate-700 truncate">
                         {tx.description ||
-                          (tx.type === "sale" ? "Venta rápida" : "Gasto rápido")}
+                          (isIncome(tx) ? "Venta rápida" : "Gasto rápido")}
                       </p>
                       <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
                         <span>
@@ -564,12 +574,12 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span
                       className={`text-xs font-extrabold ${
-                        tx.type === "sale"
+                        isIncome(tx)
                           ? "text-emerald-600"
                           : "text-rose-600"
                       }`}
                     >
-                      {tx.type === "sale" ? "+" : "-"}
+                      {isIncome(tx) ? "+" : "-"}
                       {merchant?.currency} {Number(tx.amount).toFixed(2)}
                     </span>
 
@@ -610,9 +620,9 @@ export default function DashboardPage() {
             {/* Toggle de Pestañas para la gráfica */}
             <div className="flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
               <button
-                onClick={() => setChartType("sale")}
+                onClick={() => setChartType("income")}
                 className={`px-2.5 py-1 rounded-md transition-all ${
-                  chartType === "sale"
+                  chartType === "income"
                     ? "bg-white text-emerald-600 shadow-xs"
                     : "text-slate-400"
                 }`}
@@ -658,9 +668,9 @@ export default function DashboardPage() {
               <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
                 <button
                   type="button"
-                  onClick={() => setEditType("sale")}
+                  onClick={() => setEditType("income")}
                   className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
-                    editType === "sale"
+                    editType === "income"
                       ? "bg-emerald-600 text-white shadow-sm"
                       : "text-slate-500"
                   }`}
@@ -774,7 +784,7 @@ export default function DashboardPage() {
             <p className="text-xs text-slate-500">
               Vas a eliminar{" "}
               <strong className="text-slate-700">
-                {deletingTx.type === "sale" ? "Venta" : "Gasto"} de{" "}
+                {isIncome(deletingTx) ? "Venta" : "Gasto"} de{" "}
                 {merchant?.currency} {Number(deletingTx.amount).toFixed(2)}
               </strong>
               {deletingTx.description ? ` (${deletingTx.description})` : ""}. Esta
