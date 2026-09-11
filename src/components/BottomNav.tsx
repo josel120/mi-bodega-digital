@@ -9,7 +9,7 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   // Si estamos en la pantalla de Login, no mostramos la barra de navegación
-  if (pathname === "/login") return null;
+  if (pathname === "/login" || pathname === "/login/") return null;
 
   const navItems = [
     {
@@ -34,7 +34,10 @@ export default function BottomNav() {
       <div className="flex justify-around items-center h-16 max-w-md mx-auto px-2">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const isActive =
+            pathname === item.href ||
+            pathname === `${item.href}/` ||
+            pathname.startsWith(`${item.href}/`);
 
           return (
             <Link
