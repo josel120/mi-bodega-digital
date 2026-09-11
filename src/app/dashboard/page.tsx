@@ -13,9 +13,9 @@ import {
   Loader2,
   Store,
 } from "lucide-react";
-import { Merchant, PaymentMethod, Transaction } from "@/src/types/database";
-import { createClient } from "@/src/lib/supabase/client";
-import PaymentMethodsChart from "@/src/components/PaymentMethodsChart";
+import { Merchant, PaymentMethod, Transaction } from "@/types/database";
+import { createClient } from "@/lib/supabase/client";
+import PaymentMethodsChart from "@/components/PaymentMethodsChart";
 import { PieChart as PieIcon } from "lucide-react";
 
 export default function DashboardPage() {
@@ -26,7 +26,7 @@ export default function DashboardPage() {
   // Estados del Formulario
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
-  const [type, setType] = useState<"income" | "expense">("income");
+  const [type, setType] = useState<"sale" | "expense">("sale");
   const [submitting, setSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Efectivo");
   // Estado del filtro para la gráfica ('sale' o 'expense')
@@ -92,7 +92,7 @@ export default function DashboardPage() {
       .insert([
         {
           merchant_id: merchant.id,
-          type, // 'sale' o 'expense'
+          type, // 'income' o 'expense'
           amount: numAmount,
           description,
           payment_method: paymentMethod, // <--- Guardamos el método seleccionado
@@ -118,7 +118,7 @@ export default function DashboardPage() {
 
   // Cálculos de métricas del día
   const totalIncome = transactions
-    .filter((t) => t.type === "income")
+    .filter((t) => t.type === "sale")
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const totalExpense = transactions
@@ -207,9 +207,9 @@ export default function DashboardPage() {
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
               <button
                 type="button"
-                onClick={() => setType("income")}
+                onClick={() => setType("sale")}
                 className={`py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
-                  type === "income"
+                  type === "sale"
                     ? "bg-emerald-600 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
                 }`}
@@ -280,7 +280,7 @@ export default function DashboardPage() {
               type="submit"
               disabled={submitting || !amount}
               className={`w-full py-3 font-bold text-white rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 ${
-                type === "income"
+                type === "sale"
                   ? "bg-emerald-600 hover:bg-emerald-700"
                   : "bg-rose-600 hover:bg-rose-700"
               } disabled:opacity-50`}
@@ -288,7 +288,7 @@ export default function DashboardPage() {
               {submitting ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
               ) : (
-                <span>Guardar {type === "income" ? "Venta" : "Gasto"}</span>
+                <span>Guardar {type === "sale" ? "Venta" : "Gasto"}</span>
               )}
             </button>
           </form>
@@ -314,12 +314,12 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2">
                     <div
                       className={`p-1.5 rounded-lg ${
-                        tx.type === "income"
+                        tx.type === "sale"
                           ? "bg-emerald-100 text-emerald-700"
                           : "bg-rose-100 text-rose-700"
                       }`}
                     >
-                      {tx.type === "income" ? (
+                      {tx.type === "sale" ? (
                         <Plus className="w-4 h-4" />
                       ) : (
                         <Minus className="w-4 h-4" />
@@ -328,7 +328,7 @@ export default function DashboardPage() {
                     <div>
                       <p className="text-xs font-bold text-slate-700">
                         {tx.description ||
-                          (tx.type === "income"
+                          (tx.type === "sale"
                             ? "Venta rápida"
                             : "Gasto rápido")}
                       </p>
@@ -343,12 +343,12 @@ export default function DashboardPage() {
 
                   <span
                     className={`text-xs font-extrabold ${
-                      tx.type === "income"
+                      tx.type === "sale"
                         ? "text-emerald-600"
                         : "text-rose-600"
                     }`}
                   >
-                    {tx.type === "income" ? "+" : "-"}
+                    {tx.type === "sale" ? "+" : "-"}
                     {merchant?.currency} {Number(tx.amount).toFixed(2)}
                   </span>
                 </div>

@@ -64,8 +64,12 @@ export default function LoginPage() {
 
         router.push("/dashboard");
       }
-    } catch (err: any) {
-      setErrorMsg(err.message || "Ocurrió un error inesperado al autenticar.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Ocurrió un error inesperado al autenticar.";
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }

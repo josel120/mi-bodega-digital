@@ -63,7 +63,9 @@ export default function PaymentMethodsChart({
             ))}
           </Pie>
           <Tooltip
-            formatter={(value: number) => [`S/ ${value.toFixed(2)}`, "Monto"]}
+            formatter={(
+              value: number | string | readonly (string | number)[] | undefined,
+            ) => [`S/ ${Number(value ?? 0).toFixed(2)}`, "Monto"]}
             contentStyle={{ borderRadius: "12px", fontSize: "12px" }}
           />
           <Legend wrapperStyle={{ fontSize: "11px" }} />

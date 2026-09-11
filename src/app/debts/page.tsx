@@ -3,8 +3,8 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Merchant, CustomerDebt } from "@/types/database";
+import { createClient } from "@/src/lib/supabase/client";
+import { Merchant, CustomerDebt } from "@/src/types/database";
 import {
   UserPlus,
   Send,
@@ -14,7 +14,6 @@ import {
   Plus,
   Minus,
   Loader2,
-  Store,
 } from "lucide-react";
 
 export default function DebtsPage() {

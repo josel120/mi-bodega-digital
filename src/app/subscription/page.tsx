@@ -3,10 +3,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Merchant } from "@/types/database";
+import { createClient } from "@/src/lib/supabase/client";
+import { Merchant } from "@/src/types/database";
 import {
-  CreditCard,
   CheckCircle2,
   Clock,
   ShieldCheck,
