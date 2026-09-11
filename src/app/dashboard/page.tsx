@@ -1,7 +1,7 @@
 // app/dashboard/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -12,30 +12,98 @@ import {
   LogOut,
   Loader2,
   Store,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  Trash2,
+  X,
+  PieChart as PieIcon,
 } from "lucide-react";
 import { Merchant, PaymentMethod, Transaction } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import PaymentMethodsChart from "@/components/PaymentMethodsChart";
-import { PieChart as PieIcon } from "lucide-react";
+
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatDateLabel(dateStr: string): string {
+  const todayStr = getLocalDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterday);
+
+  if (dateStr === todayStr) return "Hoy";
+  if (dateStr === yesterdayStr) return "Ayer";
+
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  return dateObj.toLocaleDateString("es-PE", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
 
 export default function DashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchingTx, setFetchingTx] = useState(false);
 
-  // Estados del Formulario
+  // Fecha seleccionada
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
+
+  // Estados del Formulario de Creación
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<"sale" | "expense">("sale");
   const [submitting, setSubmitting] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Efectivo");
+
   // Estado del filtro para la gráfica ('sale' o 'expense')
   const [chartType, setChartType] = useState<"sale" | "expense">("sale");
+
+  // Estados para Edición
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editAmount, setEditAmount] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editType, setEditType] = useState<"sale" | "expense">("sale");
+  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("Efectivo");
+
+  // Estado para Eliminación
+  const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
 
   const router = useRouter();
   const supabase = createClient();
 
-  // Cargar datos de la bodega y transacciones del día
+  // Función para consultar transacciones de una fecha específica
+  const loadTransactionsForDate = useCallback(
+    async (merchantId: string, dateStr: string) => {
+      setFetchingTx(true);
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
+      const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
+
+      const { data: txData } = await supabase
+        .from("transactions")
+        .select("*")
+        .eq("merchant_id", merchantId)
+        .gte("created_at", startOfDay.toISOString())
+        .lte("created_at", endOfDay.toISOString())
+        .order("created_at", { ascending: false });
+
+      if (txData) setTransactions(txData);
+      setFetchingTx(false);
+    },
+    [supabase],
+  );
+
+  // Cargar datos iniciales de la bodega
   useEffect(() => {
     async function loadData() {
       const {
@@ -47,7 +115,6 @@ export default function DashboardPage() {
         return;
       }
 
-      // 1. Obtener la bodega asociada al usuario
       const { data: merchantData, error: merchantError } = await supabase
         .from("merchants")
         .select("*")
@@ -60,24 +127,19 @@ export default function DashboardPage() {
       }
 
       setMerchant(merchantData);
-
-      // 2. Obtener transacciones del día de hoy
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const { data: txData } = await supabase
-        .from("transactions")
-        .select("*")
-        .eq("merchant_id", merchantData.id)
-        .gte("created_at", today.toISOString())
-        .order("created_at", { ascending: false });
-
-      if (txData) setTransactions(txData);
+      await loadTransactionsForDate(merchantData.id, selectedDate);
       setLoading(false);
     }
 
     loadData();
-  }, [router, supabase]);
+  }, [router, supabase, loadTransactionsForDate, selectedDate]);
+
+  // Manejar cambio de fecha con flechas
+  const handleShiftDate = (days: number) => {
+    const [y, m, d] = selectedDate.split("-").map(Number);
+    const target = new Date(y, m - 1, d + days);
+    setSelectedDate(getLocalDateString(target));
+  };
 
   // Registrar Venta o Gasto
   const handleAddTransaction = async (e: React.FormEvent) => {
@@ -87,15 +149,26 @@ export default function DashboardPage() {
     setSubmitting(true);
     const numAmount = parseFloat(amount);
 
+    // Si está viendo hoy, usar hora actual; si está viendo otra fecha, asociar a ese día
+    const isToday = selectedDate === getLocalDateString();
+    let createdAtISO = new Date().toISOString();
+    if (!isToday) {
+      const [y, m, d] = selectedDate.split("-").map(Number);
+      const now = new Date();
+      const customDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+      createdAtISO = customDate.toISOString();
+    }
+
     const { data: newTx, error } = await supabase
       .from("transactions")
       .insert([
         {
           merchant_id: merchant.id,
-          type, // 'income' o 'expense'
+          type,
           amount: numAmount,
           description,
-          payment_method: paymentMethod, // <--- Guardamos el método seleccionado
+          payment_method: paymentMethod,
+          created_at: createdAtISO,
         },
       ])
       .select()
@@ -110,13 +183,70 @@ export default function DashboardPage() {
     setSubmitting(false);
   };
 
+  // Iniciar edición de una transacción
+  const handleStartEdit = (tx: Transaction) => {
+    setEditingTx(tx);
+    setEditAmount(String(tx.amount));
+    setEditDescription(tx.description || "");
+    setEditType(tx.type);
+    setEditPaymentMethod(tx.payment_method || "Efectivo");
+  };
+
+  // Guardar cambios de edición
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx || !editAmount) return;
+
+    setSubmitting(true);
+    const numAmount = parseFloat(editAmount);
+
+    const { data: updatedTx, error } = await supabase
+      .from("transactions")
+      .update({
+        type: editType,
+        amount: numAmount,
+        description: editDescription,
+        payment_method: editPaymentMethod,
+      })
+      .eq("id", editingTx.id)
+      .select()
+      .single();
+
+    if (!error && updatedTx) {
+      setTransactions((prev) =>
+        prev.map((t) => (t.id === editingTx.id ? updatedTx : t)),
+      );
+      setEditingTx(null);
+    }
+
+    setSubmitting(false);
+  };
+
+  // Confirmar y eliminar transacción
+  const handleConfirmDelete = async () => {
+    if (!deletingTx) return;
+
+    setSubmitting(true);
+    const { error } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("id", deletingTx.id);
+
+    if (!error) {
+      setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
+      setDeletingTx(null);
+    }
+
+    setSubmitting(false);
+  };
+
   // Cerrar Sesión
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/login");
   };
 
-  // Cálculos de métricas del día
+  // Cálculos de métricas del día seleccionado
   const totalIncome = transactions
     .filter((t) => t.type === "sale")
     .reduce((acc, t) => acc + Number(t.amount), 0);
@@ -138,8 +268,13 @@ export default function DashboardPage() {
     );
   }
 
+  const isToday = selectedDate === getLocalDateString();
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = getLocalDateString(yesterday);
+
   return (
-    <div className="min-h-screen bg-slate-100 pb-12">
+    <div className="min-h-screen bg-slate-100 pb-20">
       {/* Top Navbar */}
       <header className="bg-emerald-600 text-white p-4 shadow-md flex justify-between items-center">
         <div className="flex items-center gap-2">
@@ -156,11 +291,78 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {/* Tarjeta de Balance Diario */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
+        {/* Selector de Fecha */}
+        <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60 flex items-center justify-between gap-2">
+          <button
+            onClick={() => handleShiftDate(-1)}
+            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+            title="Día anterior"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+
+          <div className="flex items-center gap-2">
+            {/* Botón rápido Hoy */}
+            <button
+              onClick={() => setSelectedDate(getLocalDateString())}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                isToday
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Hoy
+            </button>
+
+            {/* Botón rápido Ayer */}
+            <button
+              onClick={() => setSelectedDate(yesterdayStr)}
+              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+                selectedDate === yesterdayStr
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              Ayer
+            </button>
+
+            {/* Input de Fecha Nativo Estilizado */}
+            <div className="relative flex items-center bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 hover:bg-slate-100 transition-colors cursor-pointer">
+              <Calendar className="w-4 h-4 text-emerald-600 mr-1.5 shrink-0" />
+              <span className="text-xs font-bold text-slate-700">
+                {formatDateLabel(selectedDate)}
+              </span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => {
+                  if (e.target.value) setSelectedDate(e.target.value);
+                }}
+                className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={() => handleShiftDate(1)}
+            disabled={isToday}
+            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+            title="Día siguiente"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Tarjeta de Balance del Día */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60 relative">
+          {fetchingTx && (
+            <div className="absolute top-4 right-4">
+              <Loader2 className="w-4 h-4 text-emerald-600 animate-spin" />
+            </div>
+          )}
           <div className="flex items-center gap-2 text-slate-500 text-xs font-semibold uppercase tracking-wider mb-1">
             <Wallet className="w-4 h-4 text-emerald-600" />
-            <span>Ganancia Real de Hoy</span>
+            <span>Ganancia Real ({formatDateLabel(selectedDate)})</span>
           </div>
           <div
             className={`text-3xl font-extrabold ${balance >= 0 ? "text-slate-800" : "text-red-600"}`}
@@ -198,9 +400,16 @@ export default function DashboardPage() {
 
         {/* Formulario de Registro Rápido */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
-          <h2 className="text-sm font-bold text-slate-700 mb-3">
-            Registro Rápido
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-bold text-slate-700">
+              Registrar Movimiento
+            </h2>
+            {!isToday && (
+              <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
+                Registrando en: {formatDateLabel(selectedDate)}
+              </span>
+            )}
+          </div>
 
           <form onSubmit={handleAddTransaction} className="space-y-3">
             {/* Selector de Tipo (+ Venta / - Gasto) */}
@@ -251,12 +460,14 @@ export default function DashboardPage() {
             <div>
               <input
                 type="text"
-                placeholder="Descripción (ej. Arroz, Aceite, Pago proveedor)"
+                placeholder="Descripción (ej. Gaseosa, Pan, Pago proveedor)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+
+            {/* Selector de Método de Pago */}
             <div className="flex gap-1.5 overflow-x-auto py-1">
               {(["Efectivo", "Yape", "Plin", "Tarjeta"] as PaymentMethod[]).map(
                 (method) => (
@@ -294,26 +505,31 @@ export default function DashboardPage() {
           </form>
         </div>
 
-        {/* Movimientos Recientes del Día */}
+        {/* Movimientos del Día */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-            Movimientos de Hoy
-          </h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Movimientos ({transactions.length})
+            </h2>
+            <span className="text-[11px] text-slate-400 font-medium">
+              {formatDateLabel(selectedDate)}
+            </span>
+          </div>
 
           {transactions.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-4">
-              Aún no hay registros hoy.
+            <p className="text-xs text-slate-400 text-center py-6">
+              No hay registros para este día.
             </p>
           ) : (
             <div className="space-y-2">
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100"
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors"
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
-                      className={`p-1.5 rounded-lg ${
+                      className={`p-2 rounded-lg shrink-0 ${
                         tx.type === "sale"
                           ? "bg-emerald-100 text-emerald-700"
                           : "bg-rose-100 text-rose-700"
@@ -325,37 +541,62 @@ export default function DashboardPage() {
                         <Minus className="w-4 h-4" />
                       )}
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-bold text-slate-700 truncate">
                         {tx.description ||
-                          (tx.type === "sale"
-                            ? "Venta rápida"
-                            : "Gasto rápido")}
+                          (tx.type === "sale" ? "Venta rápida" : "Gasto rápido")}
                       </p>
-                      <p className="text-[10px] text-slate-400">
-                        {new Date(tx.created_at).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                        <span>
+                          {new Date(tx.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        <span className="inline-block w-1 h-1 rounded-full bg-slate-300" />
+                        <span className="font-semibold text-slate-500">
+                          {tx.payment_method || "Efectivo"}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <span
-                    className={`text-xs font-extrabold ${
-                      tx.type === "sale"
-                        ? "text-emerald-600"
-                        : "text-rose-600"
-                    }`}
-                  >
-                    {tx.type === "sale" ? "+" : "-"}
-                    {merchant?.currency} {Number(tx.amount).toFixed(2)}
-                  </span>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <span
+                      className={`text-xs font-extrabold ${
+                        tx.type === "sale"
+                          ? "text-emerald-600"
+                          : "text-rose-600"
+                      }`}
+                    >
+                      {tx.type === "sale" ? "+" : "-"}
+                      {merchant?.currency} {Number(tx.amount).toFixed(2)}
+                    </span>
+
+                    {/* Botón Editar */}
+                    <button
+                      onClick={() => handleStartEdit(tx)}
+                      className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      title="Editar movimiento"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Botón Eliminar */}
+                    <button
+                      onClick={() => setDeletingTx(tx)}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      title="Eliminar movimiento"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+
         {/* Sección de la Gráfica de Métodos de Pago / Gastos */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
           <div className="flex justify-between items-center mb-3">
@@ -395,6 +636,177 @@ export default function DashboardPage() {
           <PaymentMethodsChart transactions={chartTransactions} />
         </div>
       </main>
+
+      {/* MODAL DE EDICIÓN */}
+      {editingTx && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-800">
+                Editar Movimiento
+              </h3>
+              <button
+                onClick={() => setEditingTx(null)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-3">
+              {/* Selector de Tipo */}
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setEditType("sale")}
+                  className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    editType === "sale"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "text-slate-500"
+                  }`}
+                >
+                  Venta
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditType("expense")}
+                  className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                    editType === "expense"
+                      ? "bg-rose-600 text-white shadow-sm"
+                      : "text-slate-500"
+                  }`}
+                >
+                  Gasto
+                </button>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  Monto ({merchant?.currency})
+                </label>
+                <input
+                  type="number"
+                  step="0.10"
+                  required
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="w-full px-3 py-2 text-base font-bold text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  Descripción
+                </label>
+                <input
+                  type="text"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Detalle de la venta o gasto"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+
+              {/* Método de Pago */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                  Método de Pago
+                </label>
+                <div className="flex gap-1.5 overflow-x-auto py-1">
+                  {(["Efectivo", "Yape", "Plin", "Tarjeta"] as PaymentMethod[]).map(
+                    (method) => (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => setEditPaymentMethod(method)}
+                        className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all ${
+                          editPaymentMethod === method
+                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                            : "bg-slate-100 text-slate-600 border-slate-200"
+                        }`}
+                      >
+                        {method}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingTx(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting || !editAmount}
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {submitting ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Guardar Cambios"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CONFIRMACIÓN DE ELIMINACIÓN */}
+      {deletingTx && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100 space-y-3 text-center">
+            <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 mx-auto flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <h3 className="text-sm font-bold text-slate-800">
+              ¿Eliminar este movimiento?
+            </h3>
+
+            <p className="text-xs text-slate-500">
+              Vas a eliminar{" "}
+              <strong className="text-slate-700">
+                {deletingTx.type === "sale" ? "Venta" : "Gasto"} de{" "}
+                {merchant?.currency} {Number(deletingTx.amount).toFixed(2)}
+              </strong>
+              {deletingTx.description ? ` (${deletingTx.description})` : ""}. Esta
+              acción no se puede deshacer.
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingTx(null)}
+                disabled={submitting}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={submitting}
+                className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-colors flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  "Sí, Eliminar"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
