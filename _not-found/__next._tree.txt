@@ -1,2 +1,2 @@
-:HL["/mi-bodega-digital/_next/static/chunks/04ru5apqdnwdi.css","style"]
-0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"UMWJs7SqlDwV4HRda0OM2"}
+:HL["/mi-bodega-digital/_next/static/chunks/0yb2bmlgrpc-e.css","style"]
+0:{"tree":{"name":"","param":null,"prefetchHints":4176,"slots":{"children":{"name":"/_not-found","param":null,"prefetchHints":4192,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":4256,"slots":null}}}}},"staleTime":300,"buildId":"Oc05cChJx0Kcu39ZBtNDr"}
