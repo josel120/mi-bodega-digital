@@ -13,8 +13,10 @@ import {
   Loader2,
   Store,
 } from "lucide-react";
-import { Merchant, Transaction } from "@/src/types/database";
+import { Merchant, PaymentMethod, Transaction } from "@/src/types/database";
 import { createClient } from "@/src/lib/supabase/client";
+import PaymentMethodsChart from "@/src/components/PaymentMethodsChart";
+import { PieChart as PieIcon } from "lucide-react";
 
 export default function DashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
@@ -26,6 +28,9 @@ export default function DashboardPage() {
   const [description, setDescription] = useState("");
   const [type, setType] = useState<"income" | "expense">("income");
   const [submitting, setSubmitting] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("Efectivo");
+  // Estado del filtro para la gráfica ('sale' o 'expense')
+  const [chartType, setChartType] = useState<"sale" | "expense">("sale");
 
   const router = useRouter();
   const supabase = createClient();
@@ -87,9 +92,10 @@ export default function DashboardPage() {
       .insert([
         {
           merchant_id: merchant.id,
-          type,
+          type, // 'sale' o 'expense'
           amount: numAmount,
-          description: description || null,
+          description,
+          payment_method: paymentMethod, // <--- Guardamos el método seleccionado
         },
       ])
       .select()
@@ -120,6 +126,9 @@ export default function DashboardPage() {
     .reduce((acc, t) => acc + Number(t.amount), 0);
 
   const balance = totalIncome - totalExpense;
+
+  // Filtrar transacciones para la gráfica según la pestaña activa
+  const chartTransactions = transactions.filter((t) => t.type === chartType);
 
   if (loading) {
     return (
@@ -248,6 +257,24 @@ export default function DashboardPage() {
                 className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
+            <div className="flex gap-1.5 overflow-x-auto py-1">
+              {(["Efectivo", "Yape", "Plin", "Tarjeta"] as PaymentMethod[]).map(
+                (method) => (
+                  <button
+                    key={method}
+                    type="button"
+                    onClick={() => setPaymentMethod(method)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                      paymentMethod === method
+                        ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                        : "bg-slate-100 text-slate-600 border-slate-200"
+                    }`}
+                  >
+                    {method}
+                  </button>
+                ),
+              )}
+            </div>
 
             <button
               type="submit"
@@ -328,6 +355,44 @@ export default function DashboardPage() {
               ))}
             </div>
           )}
+        </div>
+        {/* Sección de la Gráfica de Métodos de Pago / Gastos */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <PieIcon className="w-4 h-4 text-emerald-600" />
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Distribución por Métodos
+              </h2>
+            </div>
+
+            {/* Toggle de Pestañas para la gráfica */}
+            <div className="flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
+              <button
+                onClick={() => setChartType("sale")}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  chartType === "sale"
+                    ? "bg-white text-emerald-600 shadow-xs"
+                    : "text-slate-400"
+                }`}
+              >
+                Ventas
+              </button>
+              <button
+                onClick={() => setChartType("expense")}
+                className={`px-2.5 py-1 rounded-md transition-all ${
+                  chartType === "expense"
+                    ? "bg-white text-rose-600 shadow-xs"
+                    : "text-slate-400"
+                }`}
+              >
+                Gastos
+              </button>
+            </div>
+          </div>
+
+          {/* Gráfica Recharts */}
+          <PaymentMethodsChart transactions={chartTransactions} />
         </div>
       </main>
     </div>

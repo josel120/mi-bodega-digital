@@ -16,12 +16,15 @@ export interface Merchant {
   created_at: string;
 }
 
+export type PaymentMethod = "Efectivo" | "Yape" | "Plin" | "Tarjeta" | "Otro";
+
 export interface Transaction {
   id: string;
   merchant_id: string;
-  type: "income" | "expense";
+  type: "sale" | "expense";
   amount: number;
-  description: string | null;
+  description?: string;
+  payment_method: PaymentMethod; // <--- Nuevo campo
   created_at: string;
 }
 
