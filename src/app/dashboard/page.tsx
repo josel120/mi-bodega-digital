@@ -19,6 +19,7 @@ import {
   Trash2,
   X,
   PieChart as PieIcon,
+  WifiOff,
 } from "lucide-react";
 import {
   Merchant,
@@ -29,7 +30,13 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PaymentMethodsChart from "@/components/PaymentMethodsChart";
 import MerchantOnboarding from "@/components/MerchantOnboarding";
-import { loadMerchant } from "@/lib/merchant";
+import {
+  loadMerchant,
+  sesionLocal,
+  leerBodegaGuardada,
+  guardarBodega,
+  olvidarBodega,
+} from "@/lib/merchant";
 import ErrorToast from "@/components/ErrorToast";
 import { parseAmount } from "@/lib/money";
 
@@ -66,6 +73,7 @@ export default function DashboardPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sinSenal, setSinSenal] = useState(false);
 
   // Fecha seleccionada
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
@@ -119,9 +127,10 @@ export default function DashboardPage() {
   //    el bodeguero cambiaba de dia y volvia a pedir la bodega sin necesidad.
   useEffect(() => {
     async function loadData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      // Sesión leída del teléfono, no de la red: en modo avión `getUser()`
+      // devolvía usuario nulo y echábamos a /login a alguien que lleva meses
+      // logueado. Ver src/lib/merchant.ts.
+      const user = await sesionLocal(supabase);
 
       if (!user) {
         router.replace("/login");
@@ -129,17 +138,28 @@ export default function DashboardPage() {
       }
 
       setUserId(user.id);
-      const { merchant: found } = await loadMerchant(supabase, user.id);
+      const { merchant: found, error } = await loadMerchant(supabase, user.id);
 
-      // Sin bodega no lo echamos a /login: desde ahi volveria a entrar y a
-      // rebotar para siempre. Le pedimos el nombre y sigue trabajando.
-      if (!found) {
-        setNeedsOnboarding(true);
+      if (found) {
+        guardarBodega(found);
+        setMerchant(found);
         setLoading(false);
         return;
       }
 
-      setMerchant(found);
+      // No llegamos a Supabase. Abrimos con la última bodega conocida para
+      // que al menos vea su caja, y lo decimos claro en pantalla.
+      if (error) {
+        const guardada = leerBodegaGuardada(user.id);
+        setSinSenal(true);
+        if (guardada) setMerchant(guardada);
+        setLoading(false);
+        return;
+      }
+
+      // Sin bodega no lo echamos a /login: desde ahí volvería a entrar y a
+      // rebotar para siempre. Le pedimos el nombre y sigue trabajando.
+      setNeedsOnboarding(true);
       setLoading(false);
     }
 
@@ -164,8 +184,9 @@ export default function DashboardPage() {
       if (!vigente) return;
 
       if (error || !rows) {
-        setErrorMsg("No pudimos cargar los movimientos del día.");
+        setSinSenal(true);
       } else {
+        setSinSenal(false);
         setTransactions(rows);
       }
       setFetchingTx(false);
@@ -310,6 +331,7 @@ export default function DashboardPage() {
 
   // Cerrar Sesión
   const handleLogout = async () => {
+    olvidarBodega();
     await supabase.auth.signOut();
     router.push("/login");
   };
@@ -376,6 +398,15 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
+        {sinSenal && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2">
+            <WifiOff className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <p className="text-xs font-semibold text-amber-800 leading-snug">
+              Sin señal. Esta es tu bodega guardada en el teléfono. Los
+              movimientos del día y lo que anotes ahora necesitan internet.
+            </p>
+          </div>
+        )}
         {/* Selector de Fecha */}
         <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60 flex items-center justify-between gap-2">
           <button

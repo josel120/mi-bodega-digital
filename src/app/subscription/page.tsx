@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Merchant } from "@/types/database";
 import { MOSTRAR_PLANES } from "@/lib/features";
+import { sesionLocal } from "@/lib/merchant";
 import {
   CheckCircle2,
   Clock,
@@ -30,12 +31,10 @@ export default function SubscriptionPage() {
     }
 
     async function loadData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const user = await sesionLocal(supabase);
 
       if (!user) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 

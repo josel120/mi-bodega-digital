@@ -3,7 +3,7 @@
 // Los datos del día siguen necesitando internet (vienen de Supabase).
 // Sube CACHE_VERSION cada vez que quieras forzar una limpieza de caché.
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const CACHE_NAME = `bodega-digital-${CACHE_VERSION}`;
 const BASE = "/mi-bodega-digital";
 const FALLBACK = `${BASE}/dashboard/`;
@@ -21,12 +21,51 @@ const SHELL = [
   `${BASE}/icons/apple-touch-icon.png`,
 ];
 
+/**
+ * Guardar el HTML no alcanza.
+ *
+ * El HTML que genera Next para /dashboard/ es solo la ruedita de "cargando":
+ * todo lo demás lo pinta el JavaScript. Si el HTML está en caché pero los
+ * archivos .js no, la app "abre" y se queda girando para siempre — que es
+ * exactamente lo que pasaba en modo avión.
+ *
+ * Los nombres de esos archivos llevan un hash que cambia en cada despliegue,
+ * así que no se pueden escribir a mano acá. Los sacamos leyendo el HTML que
+ * acabamos de guardar.
+ */
+async function guardarElArranque(cache) {
+  const paginas = SHELL.filter((url) => url.endsWith("/"));
+  const assets = new Set();
+
+  for (const pagina of paginas) {
+    try {
+      const respuesta = await cache.match(pagina);
+      if (!respuesta) continue;
+
+      const html = await respuesta.text();
+      const patron = /(?:src|href)="([^"]+\.(?:js|css|woff2))"/g;
+      let encontrado;
+
+      while ((encontrado = patron.exec(html)) !== null) {
+        // Solo lo nuestro: nada de dominios ajenos.
+        if (encontrado[1].startsWith(`${BASE}/`)) assets.add(encontrado[1]);
+      }
+    } catch {
+      // Una página que no se pudo leer no puede tumbar la instalación entera.
+    }
+  }
+
+  await Promise.allSettled([...assets].map((url) => cache.add(url)));
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
       // Uno por uno: si una ruta falla, la instalación no se cae entera.
-      Promise.allSettled(SHELL.map((url) => cache.add(url)))
-    )
+      await Promise.allSettled(SHELL.map((url) => cache.add(url)));
+      await guardarElArranque(cache);
+    })()
   );
   self.skipWaiting();
 });

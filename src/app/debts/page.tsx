@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Merchant, CustomerDebt } from "@/types/database";
-import { loadMerchant } from "@/lib/merchant";
+import { loadMerchant, sesionLocal } from "@/lib/merchant";
 import MerchantOnboarding from "@/components/MerchantOnboarding";
 import ErrorToast from "@/components/ErrorToast";
 import { parseAmount, parseMoney } from "@/lib/money";
@@ -45,12 +45,11 @@ export default function DebtsPage() {
 
   useEffect(() => {
     async function loadData() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      // Sesión del teléfono, sin salir a la red. Ver src/lib/merchant.ts.
+      const user = await sesionLocal(supabase);
 
       if (!user) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 
