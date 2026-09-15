@@ -28,6 +28,10 @@ import {
 } from "@/types/database";
 import { createClient } from "@/lib/supabase/client";
 import PaymentMethodsChart from "@/components/PaymentMethodsChart";
+import MerchantOnboarding from "@/components/MerchantOnboarding";
+import { loadMerchant } from "@/lib/merchant";
+import ErrorToast from "@/components/ErrorToast";
+import { parseAmount } from "@/lib/money";
 
 function getLocalDateString(d: Date = new Date()): string {
   const year = d.getFullYear();
@@ -59,6 +63,9 @@ export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchingTx, setFetchingTx] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Fecha seleccionada
   const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
@@ -86,15 +93,15 @@ export default function DashboardPage() {
   const router = useRouter();
   const supabase = createClient();
 
-  // Función para consultar transacciones de una fecha específica
-  const loadTransactionsForDate = useCallback(
+  // Consulta los movimientos de un día. Devuelve los datos en vez de escribir
+  // el estado para que quien llama pueda descartar una respuesta vieja.
+  const fetchTransactionsForDate = useCallback(
     async (merchantId: string, dateStr: string) => {
-      setFetchingTx(true);
       const [y, m, d] = dateStr.split("-").map(Number);
       const startOfDay = new Date(y, m - 1, d, 0, 0, 0, 0);
       const endOfDay = new Date(y, m - 1, d, 23, 59, 59, 999);
 
-      const { data: txData } = await supabase
+      const { data, error } = await supabase
         .from("transactions")
         .select("*")
         .eq("merchant_id", merchantId)
@@ -102,13 +109,14 @@ export default function DashboardPage() {
         .lte("created_at", endOfDay.toISOString())
         .order("created_at", { ascending: false });
 
-      if (txData) setTransactions(txData);
-      setFetchingTx(false);
+      if (error) return { rows: null, error: error.message };
+      return { rows: (data ?? []) as Transaction[], error: null };
     },
     [supabase],
   );
 
-  // Cargar datos iniciales de la bodega
+  // 1) Sesion y bodega. Corre una sola vez: antes esto se repetia cada vez que
+  //    el bodeguero cambiaba de dia y volvia a pedir la bodega sin necesidad.
   useEffect(() => {
     async function loadData() {
       const {
@@ -116,28 +124,59 @@ export default function DashboardPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.push("/login");
+        router.replace("/login");
         return;
       }
 
-      const { data: merchantData, error: merchantError } = await supabase
-        .from("merchants")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      setUserId(user.id);
+      const { merchant: found } = await loadMerchant(supabase, user.id);
 
-      if (merchantError || !merchantData) {
-        router.push("/login");
+      // Sin bodega no lo echamos a /login: desde ahi volveria a entrar y a
+      // rebotar para siempre. Le pedimos el nombre y sigue trabajando.
+      if (!found) {
+        setNeedsOnboarding(true);
+        setLoading(false);
         return;
       }
 
-      setMerchant(merchantData);
-      await loadTransactionsForDate(merchantData.id, selectedDate);
+      setMerchant(found);
       setLoading(false);
     }
 
     loadData();
-  }, [router, supabase, loadTransactionsForDate, selectedDate]);
+  }, [router, supabase]);
+
+  // 2) Movimientos del día elegido. El flag `vigente` descarta las respuestas
+  //    que llegan tarde: tocando rápido las flechas, la consulta de un día
+  //    anterior podía aterrizar al final y mostrar la caja del día equivocado.
+  useEffect(() => {
+    const merchantId = merchant?.id;
+    if (!merchantId) return;
+
+    let vigente = true;
+
+    async function cargar() {
+      setFetchingTx(true);
+      const { rows, error } = await fetchTransactionsForDate(
+        merchantId!,
+        selectedDate,
+      );
+      if (!vigente) return;
+
+      if (error || !rows) {
+        setErrorMsg("No pudimos cargar los movimientos del día.");
+      } else {
+        setTransactions(rows);
+      }
+      setFetchingTx(false);
+    }
+
+    cargar();
+
+    return () => {
+      vigente = false;
+    };
+  }, [merchant?.id, selectedDate, fetchTransactionsForDate]);
 
   // Manejar cambio de fecha con flechas
   const handleShiftDate = (days: number) => {
@@ -149,10 +188,15 @@ export default function DashboardPage() {
   // Registrar Venta o Gasto
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!merchant || !amount) return;
+    if (!merchant) return;
+
+    const numAmount = parseAmount(amount);
+    if (numAmount === null) {
+      setErrorMsg("Escribe un monto mayor a cero, por ejemplo 12.50");
+      return;
+    }
 
     setSubmitting(true);
-    const numAmount = parseFloat(amount);
 
     // Si está viendo hoy, usar hora actual; si está viendo otra fecha, asociar a ese día
     const isToday = selectedDate === getLocalDateString();
@@ -179,7 +223,13 @@ export default function DashboardPage() {
       .select()
       .single();
 
-    if (!error && newTx) {
+    if (error || !newTx) {
+      // Nunca vaciamos el formulario si no se guardo: el bodeguero tiene que
+      // poder reintentar sin volver a teclear el monto.
+      setErrorMsg(
+        "No se pudo anotar el movimiento. Revisa tu señal e intenta de nuevo.",
+      );
+    } else {
       setTransactions([newTx, ...transactions]);
       setAmount("");
       setDescription("");
@@ -200,10 +250,15 @@ export default function DashboardPage() {
   // Guardar cambios de edición
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTx || !editAmount) return;
+    if (!editingTx) return;
+
+    const numAmount = parseAmount(editAmount);
+    if (numAmount === null) {
+      setErrorMsg("Escribe un monto mayor a cero, por ejemplo 12.50");
+      return;
+    }
 
     setSubmitting(true);
-    const numAmount = parseFloat(editAmount);
 
     const { data: updatedTx, error } = await supabase
       .from("transactions")
@@ -217,7 +272,11 @@ export default function DashboardPage() {
       .select()
       .single();
 
-    if (!error && updatedTx) {
+    if (error || !updatedTx) {
+      setErrorMsg(
+        "No se pudo guardar el cambio. Revisa tu señal e intenta de nuevo.",
+      );
+    } else {
       setTransactions((prev) =>
         prev.map((t) => (t.id === editingTx.id ? updatedTx : t)),
       );
@@ -237,7 +296,11 @@ export default function DashboardPage() {
       .delete()
       .eq("id", deletingTx.id);
 
-    if (!error) {
+    if (error) {
+      setErrorMsg(
+        "No se pudo borrar el movimiento. Revisa tu señal e intenta de nuevo.",
+      );
+    } else {
       setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
       setDeletingTx(null);
     }
@@ -275,6 +338,18 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
       </div>
+    );
+  }
+
+  if (needsOnboarding && userId) {
+    return (
+      <MerchantOnboarding
+        userId={userId}
+        onCreated={(created) => {
+          setMerchant(created);
+          setNeedsOnboarding(false);
+        }}
+      />
     );
   }
 
@@ -455,8 +530,8 @@ export default function DashboardPage() {
                   {merchant?.currency}
                 </span>
                 <input
-                  type="number"
-                  step="0.10"
+                  type="text"
+                  inputMode="decimal"
                   required
                   placeholder="0.00"
                   value={amount}
@@ -816,6 +891,8 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
+
+      <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />
     </div>
   );
 }

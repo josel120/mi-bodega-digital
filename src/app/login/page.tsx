@@ -4,7 +4,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Store, Mail, Lock, Phone, ArrowRight, Loader2 } from "lucide-react";
-import { createClient } from "@/src/lib/supabase/client";
+import { createClient } from "@/lib/supabase/client";
+import { BASE_PATH } from "@/lib/base-path";
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -15,6 +16,7 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [infoMsg, setInfoMsg] = useState<string | null>(null);
 
   const router = useRouter();
   const supabase = createClient();
@@ -50,7 +52,13 @@ export default function LoginPage() {
               },
             ]);
 
-          if (merchantError) throw merchantError;
+          // Si el INSERT falla (sin señal, por ejemplo) NO cortamos aquí: el
+          // usuario de Auth ya existe y volver a registrarse con el mismo
+          // correo no funciona. El dashboard detecta que falta la bodega y
+          // pide solo ese dato. Ver src/components/MerchantOnboarding.tsx.
+          if (merchantError) {
+            console.error("No se pudo crear la bodega:", merchantError.message);
+          }
         }
         router.push("/dashboard");
       } else {
@@ -73,6 +81,33 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Recuperar contraseña. Supabase manda el correo con un enlace que vuelve a
+  // /reset-password, donde el usuario escribe la clave nueva.
+  const handleResetPassword = async () => {
+    if (!email) {
+      setErrorMsg("Escribe tu correo arriba y vuelve a tocar el enlace.");
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setInfoMsg(null);
+
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}${BASE_PATH}/reset-password/`,
+    });
+
+    if (error) {
+      setErrorMsg(error.message);
+    } else {
+      setInfoMsg(
+        "Te enviamos un correo con el enlace para crear una contraseña nueva. Revisa también la carpeta de spam.",
+      );
+    }
+
+    setLoading(false);
   };
 
   return (
@@ -128,6 +163,12 @@ export default function LoginPage() {
           {errorMsg && (
             <div className="p-3 text-sm text-red-600 bg-red-50 rounded-xl border border-red-100">
               {errorMsg}
+            </div>
+          )}
+
+          {infoMsg && (
+            <div className="p-3 text-sm text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-100">
+              {infoMsg}
             </div>
           )}
 
@@ -219,6 +260,17 @@ export default function LoginPage() {
               </>
             )}
           </button>
+
+          {!isRegistering && (
+            <button
+              type="button"
+              onClick={handleResetPassword}
+              disabled={loading}
+              className="w-full text-center text-xs font-semibold text-slate-500 hover:text-emerald-600 transition-colors disabled:opacity-50"
+            >
+              Olvidé mi contraseña
+            </button>
+          )}
         </form>
       </div>
     </main>

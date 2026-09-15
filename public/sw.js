@@ -3,7 +3,7 @@
 // Los datos del día siguen necesitando internet (vienen de Supabase).
 // Sube CACHE_VERSION cada vez que quieras forzar una limpieza de caché.
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `bodega-digital-${CACHE_VERSION}`;
 const BASE = "/mi-bodega-digital";
 const FALLBACK = `${BASE}/dashboard/`;
@@ -13,6 +13,7 @@ const SHELL = [
   `${BASE}/dashboard/`,
   `${BASE}/debts/`,
   `${BASE}/login/`,
+  `${BASE}/reset-password/`,
   `${BASE}/subscription/`,
   `${BASE}/manifest.json`,
   `${BASE}/icons/icon-192.png`,

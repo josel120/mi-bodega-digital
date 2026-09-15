@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
+import { BASE_PATH } from "./src/lib/base-path";
 
-const isProd = process.env.NODE_ENV === "production";
-const basePath = isProd ? "/mi-bodega-digital" : "";
+const basePath = BASE_PATH;
 
 const nextConfig: NextConfig = {
   output: "export",

@@ -3,9 +3,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
-import { Merchant } from "@/src/types/database";
-import { MOSTRAR_PLANES } from "@/src/lib/features";
+import { createClient } from "@/lib/supabase/client";
+import { Merchant } from "@/types/database";
+import { MOSTRAR_PLANES } from "@/lib/features";
 import {
   CheckCircle2,
   Clock,

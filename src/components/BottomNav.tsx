@@ -10,7 +10,9 @@ export default function BottomNav() {
   const pathname = usePathname();
 
   // Si estamos en la pantalla de Login, no mostramos la barra de navegación
-  if (pathname === "/login" || pathname === "/login/") return null;
+  // Login y recuperación de clave no llevan barra: todavía no hay sesión.
+  const sinNav = ["/login", "/reset-password"];
+  if (sinNav.some((r) => pathname === r || pathname === `${r}/`)) return null;
 
   const navItems = [
     {

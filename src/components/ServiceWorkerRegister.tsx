@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { BASE_PATH } from "@/lib/base-path";
 
-const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const BP = BASE_PATH;
 
 /**
  * Registra el service worker que permite instalar la app y abrirla sin

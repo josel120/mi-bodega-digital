@@ -3,8 +3,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/src/lib/supabase/client";
-import { Merchant, CustomerDebt } from "@/src/types/database";
+import { createClient } from "@/lib/supabase/client";
+import { Merchant, CustomerDebt } from "@/types/database";
+import { loadMerchant } from "@/lib/merchant";
+import MerchantOnboarding from "@/components/MerchantOnboarding";
+import ErrorToast from "@/components/ErrorToast";
+import { parseAmount, parseMoney } from "@/lib/money";
 import {
   UserPlus,
   Send,
@@ -20,6 +24,9 @@ export default function DebtsPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
   const [debts, setDebts] = useState<CustomerDebt[]>([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Estados Formulario Nuevo Cliente / Deuda
   const [customerName, setCustomerName] = useState("");
@@ -47,15 +54,15 @@ export default function DebtsPage() {
         return;
       }
 
-      // 1. Cargar Bodega
-      const { data: merchantData } = await supabase
-        .from("merchants")
-        .select("*")
-        .eq("user_id", user.id)
-        .single();
+      setUserId(user.id);
+
+      // 1. Cargar Bodega (ver src/lib/merchant.ts: sin .single(), que rompia
+      //    la cuenta cuando faltaba la bodega o habia dos).
+      const { merchant: merchantData } = await loadMerchant(supabase, user.id);
 
       if (!merchantData) {
-        router.push("/login");
+        setNeedsOnboarding(true);
+        setLoading(false);
         return;
       }
 
@@ -81,7 +88,7 @@ export default function DebtsPage() {
     if (!merchant || !customerName || !phoneNumber) return;
 
     setSubmitting(true);
-    const balance = parseFloat(initialBalance) || 0;
+    const balance = parseMoney(initialBalance) ?? 0;
 
     const { data: newDebt, error } = await supabase
       .from("customers_debts")
@@ -96,7 +103,11 @@ export default function DebtsPage() {
       .select()
       .single();
 
-    if (!error && newDebt) {
+    if (error || !newDebt) {
+      setErrorMsg(
+        "No se pudo guardar el cliente. Revisa tu señal e intenta de nuevo.",
+      );
+    } else {
       setDebts([newDebt, ...debts]);
       setCustomerName("");
       setPhoneNumber("");
@@ -111,28 +122,43 @@ export default function DebtsPage() {
     customer: CustomerDebt,
     isAddition: boolean,
   ) => {
-    if (!adjustAmount || isNaN(Number(adjustAmount))) return;
+    const amount = parseAmount(adjustAmount);
+    if (amount === null) {
+      setErrorMsg("Escribe un monto mayor a cero, por ejemplo 12.50");
+      return;
+    }
+    const saldoActual = Number(customer.balance);
+    if (!isAddition && amount > saldoActual) {
+      // Antes el exceso se recortaba con Math.max(0, ...) sin decir nada y el
+      // vuelto quedaba solo en la cabeza del bodeguero.
+      setErrorMsg(
+        `${customer.customer_name} solo debe S/ ${saldoActual.toFixed(2)}. Anota ese monto y dale su vuelto.`,
+      );
+      return;
+    }
 
-    const amount = parseFloat(adjustAmount);
-    const newBalance = isAddition
-      ? Number(customer.balance) + amount
-      : Number(customer.balance) - amount;
+    const newBalance = isAddition ? saldoActual + amount : saldoActual - amount;
 
     const { data: updated, error } = await supabase
       .from("customers_debts")
       .update({
-        balance: Math.max(0, newBalance),
+        balance: Math.round(newBalance * 100) / 100,
         updated_at: new Date().toISOString(),
       })
       .eq("id", customer.id)
       .select()
       .single();
 
-    if (!error && updated) {
-      setDebts(debts.map((d) => (d.id === customer.id ? updated : d)));
-      setSelectedCustomer(null);
-      setAdjustAmount("");
+    if (error || !updated) {
+      setErrorMsg(
+        "No se pudo actualizar la deuda. Revisa tu señal e intenta de nuevo.",
+      );
+      return;
     }
+
+    setDebts(debts.map((d) => (d.id === customer.id ? updated : d)));
+    setSelectedCustomer(null);
+    setAdjustAmount("");
   };
 
   // Formatear y Enviar mensaje por WhatsApp
@@ -157,6 +183,18 @@ export default function DebtsPage() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
       </div>
+    );
+  }
+
+  if (needsOnboarding && userId) {
+    return (
+      <MerchantOnboarding
+        userId={userId}
+        onCreated={(created) => {
+          setMerchant(created);
+          setNeedsOnboarding(false);
+        }}
+      />
     );
   }
 
@@ -214,8 +252,8 @@ export default function DebtsPage() {
 
               <div>
                 <input
-                  type="number"
-                  step="0.10"
+                  type="text"
+                  inputMode="decimal"
                   placeholder="Deuda inicial S/"
                   value={initialBalance}
                   onChange={(e) => setInitialBalance(e.target.value)}
@@ -307,8 +345,8 @@ export default function DebtsPage() {
                         Abonar o sumar a la deuda:
                       </p>
                       <input
-                        type="number"
-                        step="0.10"
+                        type="text"
+                        inputMode="decimal"
                         placeholder="Monto S/"
                         value={adjustAmount}
                         onChange={(e) => setAdjustAmount(e.target.value)}
@@ -336,6 +374,8 @@ export default function DebtsPage() {
           )}
         </div>
       </main>
+
+      <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />
     </div>
   );
 }

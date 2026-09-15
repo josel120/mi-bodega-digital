@@ -4,11 +4,11 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import BottomNav from "../components/BottomNav";
 import ServiceWorkerRegister from "../components/ServiceWorkerRegister";
+import { BASE_PATH } from "../lib/base-path";
 
 const inter = Inter({ subsets: ["latin"] });
 
-// En producción la app vive bajo /mi-bodega-digital en GitHub Pages.
-const BP = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const BP = BASE_PATH;
 
 export const metadata: Metadata = {
   title: "Mi Bodega Digital",

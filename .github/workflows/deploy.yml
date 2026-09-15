@@ -27,10 +27,14 @@ jobs:
           node-version: "22"
           cache: "npm"
 
+      # Ojo: NO usamos `static_site_generator: next`. Esa opcion hace que la
+      # action escriba su propio next.config.js, que le gana al next.config.ts
+      # del repo y se lleva puestos trailingSlash y NEXT_PUBLIC_BASE_PATH:
+      # /dashboard/ responde 404, el manifest y los iconos pierden el prefijo
+      # /mi-bodega-digital y el service worker nunca llega a registrarse.
+      # Nuestro next.config.ts ya define basePath, output export e images.
       - name: Setup Pages
         uses: actions/configure-pages@v5
-        with:
-          static_site_generator: next
 
       - name: Install dependencies
         run: npm ci
