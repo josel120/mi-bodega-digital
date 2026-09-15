@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Users, CreditCard } from "lucide-react";
+import { MOSTRAR_PLANES } from "@/lib/features";
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -22,11 +23,15 @@ export default function BottomNav() {
       href: "/debts",
       icon: Users,
     },
-    {
-      label: "Plan",
-      href: "/subscription",
-      icon: CreditCard,
-    },
+    ...(MOSTRAR_PLANES
+      ? [
+          {
+            label: "Plan",
+            href: "/subscription",
+            icon: CreditCard,
+          },
+        ]
+      : []),
   ];
 
   return (

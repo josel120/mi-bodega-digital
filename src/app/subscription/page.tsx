@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
 import { Merchant } from "@/src/types/database";
+import { MOSTRAR_PLANES } from "@/src/lib/features";
 import {
   CheckCircle2,
   Clock,
@@ -22,6 +23,12 @@ export default function SubscriptionPage() {
   const supabase = createClient();
 
   useEffect(() => {
+    // Durante el piloto la pantalla de planes está apagada.
+    if (!MOSTRAR_PLANES) {
+      router.replace("/dashboard");
+      return;
+    }
+
     async function loadData() {
       const {
         data: { user },
