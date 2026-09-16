@@ -20,8 +20,28 @@ Todo en soles y en castellano peruano.
 | **Planes** | Apagada durante el piloto gratuito. Se enciende poniendo `MOSTRAR_PLANES = true` en `src/lib/features.ts`. |
 
 Se instala como app: desde Chrome en Android, *Menú → Instalar aplicación*.
-Una vez instalada abre aunque no haya señal, aunque los movimientos del día
-necesitan internet para cargarse.
+
+### Sin señal
+
+La bodega de barrio es justo donde el celular se queda sin datos, así que la app
+sigue trabajando sin internet:
+
+- **Se lee** la caja del día y la lista de fiados desde lo último que se bajó al
+  teléfono. Nunca se hace pasar por fresco: arriba dice "Sin señal" y de cuándo
+  son los números.
+- **Se anota** todo: ventas, gastos, correcciones, borrados, clientes nuevos,
+  "Fió más" y "Abonó". Queda guardado en el teléfono y sube solo cuando vuelve
+  la señal. Mientras tanto se ve un contador ("3 sin subir") y cada anotación
+  pendiente sale marcada.
+- **Lo único que no se puede** es entrar por primera vez: el correo y la clave
+  los verifica Supabase. Ya con la sesión abierta, la app entra en modo avión.
+
+Si algo no se puede subir (por ejemplo, un abono que ya no cabe porque cobraron
+desde otro celular), no se descarta ni se recorta en silencio: sale un aviso
+rojo con el monto y el nombre, para que lo resuelva una persona.
+
+El cómo está en `src/lib/offline/` y en la sección 6 de
+`supabase/01-endurecer-esquema.sql`.
 
 ---
 
@@ -77,8 +97,9 @@ gastos) y `customers_debts` (fiados).
 `supabase/01-endurecer-esquema.sql` es el guion que hay que correr **una vez**
 en el SQL Editor antes de abrir la app a clientes de verdad. Agrega lo que la
 base todavía no tiene: una bodega por cuenta, montos que no pueden ser
-negativos, índices y el candado que impide que un usuario se regale el plan
-pagado. Cada bloque explica qué problema tapa.
+negativos, índices, el candado que impide que un usuario se regale el plan
+pagado y la función que aplica los abonos anotados sin señal exactamente una
+vez. Cada bloque explica qué problema tapa.
 
 ---
 

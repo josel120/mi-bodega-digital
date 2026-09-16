@@ -1,14 +1,26 @@
 // app/debts/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Merchant, CustomerDebt } from "@/types/database";
-import { loadMerchant, sesionLocal } from "@/lib/merchant";
+import {
+  loadMerchant,
+  sesionLocal,
+  leerBodegaGuardada,
+  guardarBodega,
+} from "@/lib/merchant";
 import MerchantOnboarding from "@/components/MerchantOnboarding";
 import ErrorToast from "@/components/ErrorToast";
+import EstadoConexion from "@/components/EstadoConexion";
 import { parseAmount, parseMoney } from "@/lib/money";
+import { anotar, armarPendiente, filaDeFiado } from "@/lib/offline/cola";
+import { guardarFiados, leerFiados } from "@/lib/offline/almacen";
+import { fiadosConPendientes } from "@/lib/offline/vista";
+import { useCola } from "@/lib/offline/useCola";
+import { nuevoId } from "@/lib/offline/id";
+import type { FiadoLocal } from "@/lib/offline/tipos";
 import {
   UserPlus,
   Send,
@@ -22,11 +34,16 @@ import {
 
 export default function DebtsPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
-  const [debts, setDebts] = useState<CustomerDebt[]>([]);
+  // Igual que en la caja: acá solo va lo que dijo el servidor. Lo anotado sin
+  // señal se pinta encima desde la cola.
+  const [delServidor, setDelServidor] = useState<CustomerDebt[]>([]);
+  const [guardadoEl, setGuardadoEl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [sinSenal, setSinSenal] = useState(false);
+  const [recarga, setRecarga] = useState(0);
 
   // Estados Formulario Nuevo Cliente / Deuda
   const [customerName, setCustomerName] = useState("");
@@ -35,7 +52,7 @@ export default function DebtsPage() {
   const [submitting, setSubmitting] = useState(false);
 
   // Estado Ajuste de Saldo (Modal o inline)
-  const [selectedCustomer, setSelectedCustomer] = useState<CustomerDebt | null>(
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(
     null,
   );
   const [adjustAmount, setAdjustAmount] = useState("");
@@ -43,6 +60,17 @@ export default function DebtsPage() {
   const router = useRouter();
   const supabase = createClient();
 
+  const {
+    cola,
+    porSubir,
+    trabados,
+    sincronizando,
+    subidasHechas,
+    sincronizarAhora,
+    descartar,
+  } = useCola(supabase, merchant?.id ?? null);
+
+  // 1) Sesión y bodega.
   useEffect(() => {
     async function loadData() {
       // Sesión del teléfono, sin salir a la red. Ver src/lib/merchant.ts.
@@ -55,77 +83,157 @@ export default function DebtsPage() {
 
       setUserId(user.id);
 
-      // 1. Cargar Bodega (ver src/lib/merchant.ts: sin .single(), que rompia
-      //    la cuenta cuando faltaba la bodega o habia dos).
-      const { merchant: merchantData } = await loadMerchant(supabase, user.id);
+      // Sin .single(): ver src/lib/merchant.ts, rompía la cuenta cuando
+      // faltaba la bodega o había dos.
+      const { merchant: merchantData, error } = await loadMerchant(
+        supabase,
+        user.id,
+      );
 
-      if (!merchantData) {
-        setNeedsOnboarding(true);
+      if (merchantData) {
+        guardarBodega(merchantData);
+        setMerchant(merchantData);
+        // `loading` lo apaga el efecto de la lista: si no, se ve un "no tienes
+        // fiados" de medio segundo que asusta.
+        return;
+      }
+
+      // No llegamos a Supabase. Antes esto caía en `needsOnboarding` y sin
+      // señal la pantalla de fiados le pedía crear la bodega otra vez a alguien
+      // que ya la tiene.
+      if (error) {
+        setSinSenal(true);
+        const guardada = leerBodegaGuardada(user.id);
+        if (guardada) setMerchant(guardada);
         setLoading(false);
         return;
       }
 
-      setMerchant(merchantData);
-
-      // 2. Cargar lista de deudores
-      const { data: debtsData } = await supabase
-        .from("customers_debts")
-        .select("*")
-        .eq("merchant_id", merchantData.id)
-        .order("updated_at", { ascending: false });
-
-      if (debtsData) setDebts(debtsData);
+      setNeedsOnboarding(true);
       setLoading(false);
     }
 
     loadData();
   }, [router, supabase]);
 
+  // 2) Lista de deudores. Si el servidor no contesta, la última que se bajó.
+  useEffect(() => {
+    const merchantId = merchant?.id;
+    if (!merchantId) return;
+
+    let vigente = true;
+
+    async function cargar() {
+      // Primero la lista guardada en el teléfono, que se pinta al instante.
+      const guardado = await leerFiados(merchantId!);
+      if (!vigente) return;
+      setDelServidor(guardado.filas);
+      setGuardadoEl(guardado.bajadoEl);
+      // Si no hay nada guardado seguimos en "cargando": mostrar "no tienes
+      // fiados" y que medio segundo después aparezcan cinco es peor que esperar.
+      if (guardado.filas.length > 0) setLoading(false);
+
+      // Igual que en la caja: sin red, `select` tarda siete segundos en
+      // rendirse. El aviso tiene que salir antes que eso.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setSinSenal(true);
+      }
+
+      const { data, error } = await supabase
+        .from("customers_debts")
+        .select("*")
+        .eq("merchant_id", merchantId!)
+        .order("updated_at", { ascending: false });
+
+      if (!vigente) return;
+
+      if (!error && data) {
+        setSinSenal(false);
+        setDelServidor(data as CustomerDebt[]);
+        setGuardadoEl(new Date().toISOString());
+        await guardarFiados(merchantId!, data as CustomerDebt[]);
+      } else {
+        setSinSenal(true);
+      }
+
+      setLoading(false);
+    }
+
+    cargar();
+
+    return () => {
+      vigente = false;
+    };
+  }, [merchant?.id, recarga, subidasHechas, supabase]);
+
+  const debts = useMemo(
+    () => fiadosConPendientes(delServidor, cola),
+    [delServidor, cola],
+  );
+
   // Registrar Nuevo Cliente Deudor
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!merchant || !customerName || !phoneNumber) return;
 
-    setSubmitting(true);
     const balance = parseMoney(initialBalance) ?? 0;
+    if (balance < 0) {
+      setErrorMsg("La deuda inicial no puede ser negativa.");
+      return;
+    }
 
-    const { data: newDebt, error } = await supabase
-      .from("customers_debts")
-      .insert([
-        {
-          merchant_id: merchant.id,
-          customer_name: customerName,
-          phone_number: phoneNumber,
-          balance,
-        },
-      ])
-      .select()
-      .single();
+    setSubmitting(true);
 
-    if (error || !newDebt) {
+    // El id lo decide el teléfono: si la subida se reintenta, el segundo INSERT
+    // choca con la llave primaria y no se crea el cliente dos veces.
+    const fila = filaDeFiado(
+      nuevoId(),
+      merchant.id,
+      customerName,
+      phoneNumber,
+      balance,
+    );
+
+    const resultado = await anotar(
+      supabase,
+      armarPendiente(merchant.id, nuevoId(), { tipo: "crear_fiado", fila }),
+    );
+
+    if (!resultado.ok) {
       setErrorMsg(
-        "No se pudo guardar el cliente. Revisa tu señal e intenta de nuevo.",
+        resultado.mensaje ??
+          "No se pudo guardar el cliente. Revisa tu señal e intenta de nuevo.",
       );
     } else {
-      setDebts([newDebt, ...debts]);
       setCustomerName("");
       setPhoneNumber("");
       setInitialBalance("");
+      if (!resultado.enCola) setRecarga((n) => n + 1);
     }
 
     setSubmitting(false);
   };
 
-  // Sumar o Abonar a la deuda de un cliente
+  /**
+   * Sumar o Abonar a la deuda de un cliente.
+   *
+   * Se guarda la DIFERENCIA, no el saldo final. Si esto espera señal un rato y
+   * mientras tanto alguien cobró desde otro celular, el servidor suma la
+   * diferencia sobre lo que tenga en ese momento en vez de pisarlo con un total
+   * calculado con datos viejos. Ver src/lib/offline/cola.ts.
+   */
   const handleUpdateBalance = async (
-    customer: CustomerDebt,
+    customer: FiadoLocal,
     isAddition: boolean,
   ) => {
+    if (!merchant) return;
+
     const amount = parseAmount(adjustAmount);
     if (amount === null) {
       setErrorMsg("Escribe un monto mayor a cero, por ejemplo 12.50");
       return;
     }
+
     const saldoActual = Number(customer.balance);
     if (!isAddition && amount > saldoActual) {
       // Antes el exceso se recortaba con Math.max(0, ...) sin decir nada y el
@@ -136,32 +244,34 @@ export default function DebtsPage() {
       return;
     }
 
-    const newBalance = isAddition ? saldoActual + amount : saldoActual - amount;
+    setSubmitting(true);
 
-    const { data: updated, error } = await supabase
-      .from("customers_debts")
-      .update({
-        balance: Math.round(newBalance * 100) / 100,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", customer.id)
-      .select()
-      .single();
+    const resultado = await anotar(
+      supabase,
+      armarPendiente(merchant.id, nuevoId(), {
+        tipo: "ajustar_fiado",
+        debtId: customer.id,
+        delta: isAddition ? amount : -amount,
+        nombre: customer.customer_name,
+      }),
+    );
 
-    if (error || !updated) {
+    if (!resultado.ok) {
       setErrorMsg(
-        "No se pudo actualizar la deuda. Revisa tu señal e intenta de nuevo.",
+        resultado.mensaje ??
+          "No se pudo actualizar la deuda. Revisa tu señal e intenta de nuevo.",
       );
-      return;
+    } else {
+      setSelectedCustomerId(null);
+      setAdjustAmount("");
+      if (!resultado.enCola) setRecarga((n) => n + 1);
     }
 
-    setDebts(debts.map((d) => (d.id === customer.id ? updated : d)));
-    setSelectedCustomer(null);
-    setAdjustAmount("");
+    setSubmitting(false);
   };
 
   // Formatear y Enviar mensaje por WhatsApp
-  const handleSendWhatsApp = (customer: CustomerDebt) => {
+  const handleSendWhatsApp = (customer: FiadoLocal) => {
     const yapeInfo = merchant?.yape_number
       ? ` Puedes yapear/plinear al ${merchant.yape_number}.`
       : "";
@@ -190,6 +300,7 @@ export default function DebtsPage() {
       <MerchantOnboarding
         userId={userId}
         onCreated={(created) => {
+          guardarBodega(created);
           setMerchant(created);
           setNeedsOnboarding(false);
         }}
@@ -214,6 +325,16 @@ export default function DebtsPage() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
+        <EstadoConexion
+          sinSenal={sinSenal}
+          guardadoEl={guardadoEl}
+          porSubir={porSubir.length}
+          trabados={trabados}
+          sincronizando={sincronizando}
+          onReintentar={() => void sincronizarAhora()}
+          onDescartar={(seq) => void descartar(seq)}
+        />
+
         {/* Formulario de Nuevo Cliente */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60">
           <h2 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
@@ -290,7 +411,13 @@ export default function DebtsPage() {
               {debts.map((customer) => (
                 <div
                   key={customer.id}
-                  className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2"
+                  className={`p-3.5 rounded-xl border space-y-2 ${
+                    customer.trabado
+                      ? "bg-rose-50 border-rose-200"
+                      : customer.pendiente
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-slate-50 border-slate-200/80"
+                  }`}
                 >
                   <div className="flex justify-between items-start">
                     <div>
@@ -313,14 +440,25 @@ export default function DebtsPage() {
                     </div>
                   </div>
 
+                  {/* Que nunca quede duda de qué cifra es la del servidor. */}
+                  {customer.pendiente && (
+                    <p
+                      className={`text-[11px] font-bold ${customer.trabado ? "text-rose-700" : "text-amber-700"}`}
+                    >
+                      {customer.trabado
+                        ? "Algo de este cliente no se pudo subir. Mira el aviso rojo de arriba."
+                        : `Este saldo incluye ${customer.sinSubir === 1 ? "1 anotación" : `${customer.sinSubir} anotaciones`} que todavía no suben.`}
+                    </p>
+                  )}
+
                   {/* Acciones */}
                   <div className="flex gap-2 pt-1 border-t border-slate-200/50">
                     <button
                       onClick={() =>
-                        setSelectedCustomer(
-                          selectedCustomer?.id === customer.id
+                        setSelectedCustomerId(
+                          selectedCustomerId === customer.id
                             ? null
-                            : customer,
+                            : customer.id,
                         )
                       }
                       className="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors"
@@ -338,7 +476,7 @@ export default function DebtsPage() {
                   </div>
 
                   {/* Sub-formulario inline para Ajustar Deuda */}
-                  {selectedCustomer?.id === customer.id && (
+                  {selectedCustomerId === customer.id && (
                     <div className="p-3 bg-white rounded-xl border border-slate-200 mt-2 space-y-2">
                       <p className="text-[11px] font-bold text-slate-600">
                         Abonar o sumar a la deuda:
@@ -353,14 +491,18 @@ export default function DebtsPage() {
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <button
+                          type="button"
+                          disabled={submitting}
                           onClick={() => handleUpdateBalance(customer, true)}
-                          className="py-1.5 bg-rose-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1"
+                          className="py-1.5 bg-rose-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                         >
                           <Plus className="w-3 h-3" /> Fió más (+S/)
                         </button>
                         <button
+                          type="button"
+                          disabled={submitting}
                           onClick={() => handleUpdateBalance(customer, false)}
-                          className="py-1.5 bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1"
+                          className="py-1.5 bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                         >
                           <Minus className="w-3 h-3" /> Abonó (-S/)
                         </button>

@@ -1,9 +1,18 @@
 // Service worker de Mi Bodega Digital.
-// Objetivo: que la app se pueda instalar y que ABRA aunque no haya señal.
-// Los datos del día siguen necesitando internet (vienen de Supabase).
+//
+// Este archivo se ocupa SOLO del cascarón: que la app se pueda instalar y que
+// abra aunque no haya señal (HTML, JavaScript, iconos).
+//
+// Los datos no pasan por acá a propósito. La caja del día y los fiados se
+// guardan en IndexedDB desde la app (src/lib/offline/), que es donde se puede
+// decir en pantalla "esto quedó guardado el martes a las 7" y "esto todavía no
+// sube". Si sirviéramos las respuestas de Supabase desde la caché del service
+// worker, el navegador mostraría cifras viejas como si fueran de hoy y nadie
+// podría distinguirlas: con plata eso es peor que no mostrar nada.
+//
 // Sube CACHE_VERSION cada vez que quieras forzar una limpieza de caché.
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const CACHE_NAME = `bodega-digital-${CACHE_VERSION}`;
 const BASE = "/mi-bodega-digital";
 const FALLBACK = `${BASE}/dashboard/`;
@@ -89,8 +98,9 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
 
-  // Nunca tocamos otros dominios. En particular Supabase: servir plata y
-  // fiados desde caché mostraría cifras viejas como si fueran de hoy.
+  // Nunca tocamos otros dominios. En particular Supabase: de los datos se
+  // encarga IndexedDB desde la app, que sí puede decir de cuándo son. Ver el
+  // comentario de arriba.
   if (url.origin !== self.location.origin) return;
 
   // Navegación: primero la red, y si no hay señal, lo último que guardamos.

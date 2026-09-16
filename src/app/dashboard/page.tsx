@@ -1,7 +1,7 @@
 // app/dashboard/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -19,7 +19,6 @@ import {
   Trash2,
   X,
   PieChart as PieIcon,
-  WifiOff,
 } from "lucide-react";
 import {
   Merchant,
@@ -38,20 +37,30 @@ import {
   olvidarBodega,
 } from "@/lib/merchant";
 import ErrorToast from "@/components/ErrorToast";
+import EstadoConexion from "@/components/EstadoConexion";
 import { parseAmount } from "@/lib/money";
-
-function getLocalDateString(d: Date = new Date()): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+import { diaLocal } from "@/lib/fechas";
+import {
+  anotar,
+  armarPendiente,
+  borrarMovimientoDeCola,
+  editarMovimientoEnCola,
+} from "@/lib/offline/cola";
+import {
+  guardarMovimientosDelDia,
+  leerMovimientosDelDia,
+} from "@/lib/offline/almacen";
+import { movimientosConPendientes } from "@/lib/offline/vista";
+import { useCola } from "@/lib/offline/useCola";
+import { nuevoId } from "@/lib/offline/id";
+import { vaciarAlmacen } from "@/lib/offline/db";
+import type { CambiosMovimiento, MovimientoLocal } from "@/lib/offline/tipos";
 
 function formatDateLabel(dateStr: string): string {
-  const todayStr = getLocalDateString();
+  const todayStr = diaLocal();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = getLocalDateString(yesterday);
+  const yesterdayStr = diaLocal(yesterday);
 
   if (dateStr === todayStr) return "Hoy";
   if (dateStr === yesterdayStr) return "Ayer";
@@ -67,16 +76,22 @@ function formatDateLabel(dateStr: string): string {
 
 export default function DashboardPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  // Lo que dijo el servidor la última vez. Lo que la bodeguera anotó sin señal
+  // vive en la cola y se pinta encima más abajo, para no perder nunca de vista
+  // qué cifra es oficial y cuál todavía no subió.
+  const [delServidor, setDelServidor] = useState<Transaction[]>([]);
+  const [guardadoEl, setGuardadoEl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [fetchingTx, setFetchingTx] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [sinSenal, setSinSenal] = useState(false);
+  // Sube cuando hay que volver a preguntarle al servidor.
+  const [recarga, setRecarga] = useState(0);
 
   // Fecha seleccionada
-  const [selectedDate, setSelectedDate] = useState<string>(getLocalDateString());
+  const [selectedDate, setSelectedDate] = useState<string>(diaLocal());
 
   // Estados del Formulario de Creación
   const [amount, setAmount] = useState("");
@@ -89,17 +104,31 @@ export default function DashboardPage() {
   const [chartType, setChartType] = useState<TransactionType>("income");
 
   // Estados para Edición
-  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editingTx, setEditingTx] = useState<MovimientoLocal | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editType, setEditType] = useState<TransactionType>("income");
-  const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>("Efectivo");
+  const [editPaymentMethod, setEditPaymentMethod] =
+    useState<PaymentMethod>("Efectivo");
 
   // Estado para Eliminación
-  const [deletingTx, setDeletingTx] = useState<Transaction | null>(null);
+  const [deletingTx, setDeletingTx] = useState<MovimientoLocal | null>(null);
+
+  // Confirmación de cierre de sesión cuando queda algo sin subir
+  const [confirmarSalida, setConfirmarSalida] = useState(false);
 
   const router = useRouter();
   const supabase = createClient();
+
+  const {
+    cola,
+    porSubir,
+    trabados,
+    sincronizando,
+    subidasHechas,
+    sincronizarAhora,
+    descartar,
+  } = useCola(supabase, merchant?.id ?? null);
 
   // Consulta los movimientos de un día. Devuelve los datos en vez de escribir
   // el estado para que quien llama pueda descartar una respuesta vieja.
@@ -169,6 +198,10 @@ export default function DashboardPage() {
   // 2) Movimientos del día elegido. El flag `vigente` descarta las respuestas
   //    que llegan tarde: tocando rápido las flechas, la consulta de un día
   //    anterior podía aterrizar al final y mostrar la caja del día equivocado.
+  //
+  //    Si el servidor no contesta ya no nos quedamos con la pantalla vacía:
+  //    mostramos lo último que se bajó a este teléfono, con su fecha a la
+  //    vista, y la cola encima.
   useEffect(() => {
     const merchantId = merchant?.id;
     if (!merchantId) return;
@@ -177,17 +210,36 @@ export default function DashboardPage() {
 
     async function cargar() {
       setFetchingTx(true);
-      const { rows, error } = await fetchTransactionsForDate(
-        merchantId!,
-        selectedDate,
-      );
+
+      // Primero lo que ya está en el teléfono: la pantalla se pinta al toque y
+      // sin pasar por un vacío, con o sin señal.
+      const guardado = await leerMovimientosDelDia(merchantId!, selectedDate);
+      if (!vigente) return;
+      // Sin `if`: al cambiar de día hay que soltar los movimientos del día
+      // anterior aunque de este todavía no haya nada guardado. Antes se
+      // quedaban en pantalla bajo el título del día nuevo.
+      setDelServidor(guardado.filas);
+      setGuardadoEl(guardado.bajadoEl);
+
+      // En modo avión `select` reintenta solo (3 veces, 1s+2s+4s) antes de
+      // darse por vencido: el aviso de "Sin señal" aparecía siete segundos
+      // tarde y la bodeguera miraba cifras guardadas creyéndolas de ahora.
+      // Cuando el navegador ya dice que no hay red, lo avisamos de una.
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        setSinSenal(true);
+      }
+
+      const { rows } = await fetchTransactionsForDate(merchantId!, selectedDate);
       if (!vigente) return;
 
-      if (error || !rows) {
-        setSinSenal(true);
-      } else {
+      if (rows) {
         setSinSenal(false);
-        setTransactions(rows);
+        setDelServidor(rows);
+        setGuardadoEl(new Date().toISOString());
+        await guardarMovimientosDelDia(merchantId!, selectedDate, rows);
+      } else {
+        // Nos quedamos con lo guardado, que ya está en pantalla, y lo decimos.
+        setSinSenal(true);
       }
       setFetchingTx(false);
     }
@@ -197,16 +249,27 @@ export default function DashboardPage() {
     return () => {
       vigente = false;
     };
-  }, [merchant?.id, selectedDate, fetchTransactionsForDate]);
+  }, [merchant?.id, selectedDate, recarga, subidasHechas, fetchTransactionsForDate]);
+
+  // Lo que ve la pantalla: el servidor con la cola pintada encima.
+  const transactions = useMemo(
+    () => movimientosConPendientes(delServidor, cola, selectedDate),
+    [delServidor, cola, selectedDate],
+  );
+
+  const pendientesDelDia = transactions.filter((t) => t.pendiente).length;
 
   // Manejar cambio de fecha con flechas
   const handleShiftDate = (days: number) => {
     const [y, m, d] = selectedDate.split("-").map(Number);
     const target = new Date(y, m - 1, d + days);
-    setSelectedDate(getLocalDateString(target));
+    setSelectedDate(diaLocal(target));
   };
 
-  // Registrar Venta o Gasto
+  // Registrar Venta o Gasto.
+  //
+  // Se escribe primero en el teléfono y recién después se intenta subir. Antes
+  // esto era al revés y sin señal la venta simplemente no existía.
   const handleAddTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!merchant) return;
@@ -220,47 +283,62 @@ export default function DashboardPage() {
     setSubmitting(true);
 
     // Si está viendo hoy, usar hora actual; si está viendo otra fecha, asociar a ese día
-    const isToday = selectedDate === getLocalDateString();
+    const isToday = selectedDate === diaLocal();
     let createdAtISO = new Date().toISOString();
     if (!isToday) {
       const [y, m, d] = selectedDate.split("-").map(Number);
       const now = new Date();
-      const customDate = new Date(y, m - 1, d, now.getHours(), now.getMinutes(), now.getSeconds());
+      const customDate = new Date(
+        y,
+        m - 1,
+        d,
+        now.getHours(),
+        now.getMinutes(),
+        now.getSeconds(),
+      );
       createdAtISO = customDate.toISOString();
     }
 
-    const { data: newTx, error } = await supabase
-      .from("transactions")
-      .insert([
-        {
-          merchant_id: merchant.id,
-          type,
-          amount: numAmount,
-          description,
-          payment_method: paymentMethod,
-          created_at: createdAtISO,
-        },
-      ])
-      .select()
-      .single();
+    const fila: Transaction = {
+      // El id lo decide el teléfono: es lo que evita que un reintento duplique
+      // la venta. Ver src/lib/offline/cola.ts.
+      id: nuevoId(),
+      merchant_id: merchant.id,
+      type,
+      amount: numAmount,
+      description,
+      payment_method: paymentMethod,
+      created_at: createdAtISO,
+    };
 
-    if (error || !newTx) {
+    const resultado = await anotar(
+      supabase,
+      armarPendiente(merchant.id, nuevoId(), {
+        tipo: "crear_movimiento",
+        fila,
+      }),
+    );
+
+    if (!resultado.ok) {
       // Nunca vaciamos el formulario si no se guardo: el bodeguero tiene que
       // poder reintentar sin volver a teclear el monto.
       setErrorMsg(
-        "No se pudo anotar el movimiento. Revisa tu señal e intenta de nuevo.",
+        resultado.mensaje ??
+          "No se pudo anotar el movimiento. Revisa tu señal e intenta de nuevo.",
       );
     } else {
-      setTransactions([newTx, ...transactions]);
       setAmount("");
       setDescription("");
+      // Sin cola (teléfono que no deja guardar) la fila solo existe en el
+      // servidor: hay que volver a preguntar para verla.
+      if (!resultado.enCola) setRecarga((n) => n + 1);
     }
 
     setSubmitting(false);
   };
 
   // Iniciar edición de una transacción
-  const handleStartEdit = (tx: Transaction) => {
+  const handleStartEdit = (tx: MovimientoLocal) => {
     setEditingTx(tx);
     setEditAmount(String(tx.amount));
     setEditDescription(tx.description || "");
@@ -271,7 +349,7 @@ export default function DashboardPage() {
   // Guardar cambios de edición
   const handleSaveEdit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTx) return;
+    if (!editingTx || !merchant) return;
 
     const numAmount = parseAmount(editAmount);
     if (numAmount === null) {
@@ -281,27 +359,44 @@ export default function DashboardPage() {
 
     setSubmitting(true);
 
-    const { data: updatedTx, error } = await supabase
-      .from("transactions")
-      .update({
-        type: editType,
-        amount: numAmount,
-        description: editDescription,
-        payment_method: editPaymentMethod,
-      })
-      .eq("id", editingTx.id)
-      .select()
-      .single();
+    const cambios: CambiosMovimiento = {
+      type: editType,
+      amount: numAmount,
+      description: editDescription,
+      payment_method: editPaymentMethod,
+    };
 
-    if (error || !updatedTx) {
+    // Si el movimiento todavía no subió, se corrige en la cola: así al servidor
+    // nunca le llega la versión equivocada.
+    const eraPendiente = await editarMovimientoEnCola(
+      merchant.id,
+      editingTx.id,
+      cambios,
+    );
+
+    if (eraPendiente) {
+      setEditingTx(null);
+      setSubmitting(false);
+      return;
+    }
+
+    const resultado = await anotar(
+      supabase,
+      armarPendiente(merchant.id, nuevoId(), {
+        tipo: "editar_movimiento",
+        id: editingTx.id,
+        cambios,
+      }),
+    );
+
+    if (!resultado.ok) {
       setErrorMsg(
-        "No se pudo guardar el cambio. Revisa tu señal e intenta de nuevo.",
+        resultado.mensaje ??
+          "No se pudo guardar el cambio. Revisa tu señal e intenta de nuevo.",
       );
     } else {
-      setTransactions((prev) =>
-        prev.map((t) => (t.id === editingTx.id ? updatedTx : t)),
-      );
       setEditingTx(null);
+      if (!resultado.enCola) setRecarga((n) => n + 1);
     }
 
     setSubmitting(false);
@@ -309,31 +404,59 @@ export default function DashboardPage() {
 
   // Confirmar y eliminar transacción
   const handleConfirmDelete = async () => {
-    if (!deletingTx) return;
+    if (!deletingTx || !merchant) return;
 
     setSubmitting(true);
-    const { error } = await supabase
-      .from("transactions")
-      .delete()
-      .eq("id", deletingTx.id);
 
-    if (error) {
+    // Si nunca llegó al servidor, borrarlo es sacarlo de la cola.
+    const eraPendiente = await borrarMovimientoDeCola(
+      merchant.id,
+      deletingTx.id,
+    );
+
+    if (eraPendiente) {
+      setDeletingTx(null);
+      setSubmitting(false);
+      return;
+    }
+
+    const resultado = await anotar(
+      supabase,
+      armarPendiente(merchant.id, nuevoId(), {
+        tipo: "borrar_movimiento",
+        id: deletingTx.id,
+      }),
+    );
+
+    if (!resultado.ok) {
       setErrorMsg(
-        "No se pudo borrar el movimiento. Revisa tu señal e intenta de nuevo.",
+        resultado.mensaje ??
+          "No se pudo borrar el movimiento. Revisa tu señal e intenta de nuevo.",
       );
     } else {
-      setTransactions((prev) => prev.filter((t) => t.id !== deletingTx.id));
       setDeletingTx(null);
+      if (!resultado.enCola) setRecarga((n) => n + 1);
     }
 
     setSubmitting(false);
   };
 
-  // Cerrar Sesión
-  const handleLogout = async () => {
+  // Cerrar Sesión. Se lleva por delante lo guardado en el teléfono, así que si
+  // queda algo sin subir hay que avisarlo antes: esa plata no está en ningún
+  // otro lado.
+  const cerrarSesion = async () => {
     olvidarBodega();
+    await vaciarAlmacen();
     await supabase.auth.signOut();
     router.push("/login");
+  };
+
+  const handleLogout = () => {
+    if (cola.length > 0) {
+      setConfirmarSalida(true);
+      return;
+    }
+    void cerrarSesion();
   };
 
   // Helper para identificar ventas (income o legacy sale)
@@ -368,6 +491,7 @@ export default function DashboardPage() {
       <MerchantOnboarding
         userId={userId}
         onCreated={(created) => {
+          guardarBodega(created);
           setMerchant(created);
           setNeedsOnboarding(false);
         }}
@@ -375,10 +499,10 @@ export default function DashboardPage() {
     );
   }
 
-  const isToday = selectedDate === getLocalDateString();
+  const isToday = selectedDate === diaLocal();
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = getLocalDateString(yesterday);
+  const yesterdayStr = diaLocal(yesterday);
 
   return (
     <div className="min-h-screen bg-slate-100 pb-20">
@@ -398,15 +522,16 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">
-        {sinSenal && (
-          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-2">
-            <WifiOff className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <p className="text-xs font-semibold text-amber-800 leading-snug">
-              Sin señal. Esta es tu bodega guardada en el teléfono. Los
-              movimientos del día y lo que anotes ahora necesitan internet.
-            </p>
-          </div>
-        )}
+        <EstadoConexion
+          sinSenal={sinSenal}
+          guardadoEl={guardadoEl}
+          porSubir={porSubir.length}
+          trabados={trabados}
+          sincronizando={sincronizando}
+          onReintentar={() => void sincronizarAhora()}
+          onDescartar={(seq) => void descartar(seq)}
+        />
+
         {/* Selector de Fecha */}
         <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60 flex items-center justify-between gap-2">
           <button
@@ -420,7 +545,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             {/* Botón rápido Hoy */}
             <button
-              onClick={() => setSelectedDate(getLocalDateString())}
+              onClick={() => setSelectedDate(diaLocal())}
               className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
                 isToday
                   ? "bg-emerald-600 text-white shadow-xs"
@@ -485,6 +610,18 @@ export default function DashboardPage() {
           >
             {merchant?.currency} {balance.toFixed(2)}
           </div>
+
+          {/* Si la cuenta incluye plata que todavía no subió, se dice acá mismo:
+              la cifra es correcta para la bodeguera, pero no es la del servidor. */}
+          {pendientesDelDia > 0 && (
+            <p className="text-[11px] font-bold text-amber-700 mt-1">
+              Incluye{" "}
+              {pendientesDelDia === 1
+                ? "1 anotación que todavía no sube"
+                : `${pendientesDelDia} anotaciones que todavía no suben`}
+              .
+            </p>
+          )}
 
           {/* Desglose Ingresos / Gastos */}
           <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-slate-100">
@@ -641,7 +778,13 @@ export default function DashboardPage() {
               {transactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 hover:border-slate-200 transition-colors"
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
+                    tx.trabado
+                      ? "bg-rose-50 border-rose-200"
+                      : tx.pendiente
+                        ? "bg-amber-50 border-amber-200"
+                        : "bg-slate-50 border-slate-100 hover:border-slate-200"
+                  }`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <div
@@ -673,6 +816,16 @@ export default function DashboardPage() {
                         <span className="font-semibold text-slate-500">
                           {tx.payment_method || "Efectivo"}
                         </span>
+                        {tx.pendiente && (
+                          <>
+                            <span className="inline-block w-1 h-1 rounded-full bg-slate-300" />
+                            <span
+                              className={`font-bold ${tx.trabado ? "text-rose-700" : "text-amber-700"}`}
+                            >
+                              {tx.trabado ? "no subió" : "sin subir"}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -680,9 +833,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span
                       className={`text-xs font-extrabold ${
-                        isIncome(tx)
-                          ? "text-emerald-600"
-                          : "text-rose-600"
+                        isIncome(tx) ? "text-emerald-600" : "text-rose-600"
                       }`}
                     >
                       {isIncome(tx) ? "+" : "-"}
@@ -796,14 +947,16 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* Monto */}
+              {/* Monto. type="text" + inputMode="decimal" a propósito: con
+                  type="number" el navegador descarta "12,50" y el campo llega
+                  vacío. Ver src/lib/money.ts. */}
               <div>
                 <label className="block text-[11px] font-semibold text-slate-500 mb-1">
                   Monto ({merchant?.currency})
                 </label>
                 <input
-                  type="number"
-                  step="0.10"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={editAmount}
                   onChange={(e) => setEditAmount(e.target.value)}
@@ -831,22 +984,22 @@ export default function DashboardPage() {
                   Método de Pago
                 </label>
                 <div className="flex gap-1.5 overflow-x-auto py-1">
-                  {(["Efectivo", "Yape", "Plin", "Tarjeta"] as PaymentMethod[]).map(
-                    (method) => (
-                      <button
-                        key={method}
-                        type="button"
-                        onClick={() => setEditPaymentMethod(method)}
-                        className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all ${
-                          editPaymentMethod === method
-                            ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
-                            : "bg-slate-100 text-slate-600 border-slate-200"
-                        }`}
-                      >
-                        {method}
-                      </button>
-                    ),
-                  )}
+                  {(
+                    ["Efectivo", "Yape", "Plin", "Tarjeta"] as PaymentMethod[]
+                  ).map((method) => (
+                    <button
+                      key={method}
+                      type="button"
+                      onClick={() => setEditPaymentMethod(method)}
+                      className={`px-3 py-1 text-xs font-bold rounded-lg border transition-all ${
+                        editPaymentMethod === method
+                          ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                          : "bg-slate-100 text-slate-600 border-slate-200"
+                      }`}
+                    >
+                      {method}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -893,8 +1046,8 @@ export default function DashboardPage() {
                 {isIncome(deletingTx) ? "Venta" : "Gasto"} de{" "}
                 {merchant?.currency} {Number(deletingTx.amount).toFixed(2)}
               </strong>
-              {deletingTx.description ? ` (${deletingTx.description})` : ""}. Esta
-              acción no se puede deshacer.
+              {deletingTx.description ? ` (${deletingTx.description})` : ""}.
+              Esta acción no se puede deshacer.
             </p>
 
             <div className="flex gap-2 pt-2">
@@ -923,8 +1076,43 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* CERRAR SESIÓN CON COSAS SIN SUBIR */}
+      {confirmarSalida && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl border border-slate-100 space-y-3 text-center">
+            <h3 className="text-sm font-bold text-slate-800">
+              Todavía tienes {cola.length}{" "}
+              {cola.length === 1 ? "anotación" : "anotaciones"} sin subir
+            </h3>
+            <p className="text-xs text-slate-500 leading-snug">
+              Esa plata está guardada solo en este teléfono. Si cierras sesión se
+              borra y no hay cómo recuperarla. Conéctate un momento a internet y
+              espera a que suba.
+            </p>
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmarSalida(false)}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-colors"
+              >
+                Mejor me quedo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmarSalida(false);
+                  void cerrarSesion();
+                }}
+                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-colors"
+              >
+                Salir igual
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />
     </div>
   );
 }
-

@@ -7,29 +7,18 @@ Auditoría del 2026-09-15 sobre el commit `674789e`.
 
 ---
 
-## 1. Registrar ventas sin señal
+## 1. Registrar ventas sin señal — HECHO
 
-**Problema.** El service worker hace que la app *abra* sin internet, pero
-Supabase no responde y cada venta que anote en ese rato se pierde con un aviso
-rojo. La bodega de barrio es justo el lugar donde el celular se queda sin datos:
-le prometimos "funciona sin señal" y lo que funciona es la pantalla vacía. Es la
-diferencia entre una app que reemplaza al cuaderno y una que lo acompaña.
+Implementado. La caja del día y los fiados se leen del teléfono cuando Supabase
+no contesta, y todo lo que se anota sin señal (ventas, gastos, ediciones,
+borrados, clientes nuevos, "Fió más" y "Abonó") queda guardado en IndexedDB y
+sube solo cuando vuelve el internet. El código vive en `src/lib/offline/`.
 
-**Solución.** Escribir primero en IndexedDB y sincronizar después:
-
-1. Cada venta se guarda local con un `id` generado en el cliente (`crypto.randomUUID()`)
-   y un estado `pendiente`.
-2. La pantalla lee de local, así el saldo del día es correcto al instante.
-3. Un worker de sincronización sube lo pendiente cuando vuelve la señal
-   (`navigator.onLine` + reintentos). El `id` del cliente hace la subida
-   idempotente: si se sube dos veces, la segunda choca con la clave primaria.
-4. Un puntito gris en cada movimiento no sincronizado, y un contador arriba
-   ("3 sin subir").
-
-**A favor.** Es el argumento de venta más fuerte contra el cuaderno de papel.
-**En contra.** Es la pieza más grande de la lista (dos o tres días). Obliga a
-pensar qué pasa si el mismo usuario anota desde dos celulares. Yo lo haría
-después del piloto, con diez bodegas ya usándolo y quejándose de esto.
+**Queda una cosa por hacer a mano**: correr la sección 6 de
+`supabase/01-endurecer-esquema.sql`. Sin ella los abonos se suben con un
+compare-and-swap que protege contra pisar el saldo de otro celular, pero no
+contra sumar dos veces si se pierde la respuesta después de aplicarse. Con ella,
+el abono se aplica exactamente una vez.
 
 ---
 
