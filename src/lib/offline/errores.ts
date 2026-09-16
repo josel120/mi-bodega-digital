@@ -63,14 +63,44 @@ export function esDuplicado(error: ErrorSupabase | null | undefined): boolean {
   return (error.message ?? "").toLowerCase().includes("duplicate key");
 }
 
-/** La sesión se venció mientras estábamos sin señal: hay que volver a entrar. */
-export function esSesionVencida(
+/**
+ * La cuenta se cerró sola: hay que volver a entrar.
+ *
+ * Esto NO es un rechazo del servidor a la anotación. La anotación está bien; lo
+ * que falta es la credencial. Tratarlo como rechazo fue el peor error de la
+ * primera versión: trababa la cola entera, una venta por una, y la única salida
+ * que le quedaba a la bodeguera era borrarlas.
+ *
+ * Los códigos salen de probar contra el PostgREST de este proyecto con un token
+ * vencido de verdad: `PGRST303` con "JWT expired", y `PGRST301` cuando el token
+ * está roto o firmado con otra llave.
+ *
+ * Ojo con lo que NO está acá: el `42501` de RLS. En la práctica ese es el error
+ * que más aparece cuando la sesión muere, porque supabase-js, si no puede
+ * renovar, manda la clave anónima y el servidor responde "violates row-level
+ * security policy". Pero un 42501 también puede ser un permiso mal puesto de
+ * verdad, y confundir las dos cosas dejaría a la app reintentando para siempre
+ * sin decir nada. Por eso la falta de sesión se detecta ANTES de subir, mirando
+ * si hay sesión, en vez de adivinarla por el error. Ver `revisarSesion` en
+ * cola.ts.
+ */
+export function esSesionCaida(
   error: ErrorSupabase | null | undefined,
 ): boolean {
   if (!error) return false;
-  if (error.code === "PGRST301" || error.code === "401") return true;
+  if (
+    error.code === "PGRST301" ||
+    error.code === "PGRST303" ||
+    error.code === "401"
+  ) {
+    return true;
+  }
   const texto = (error.message ?? "").toLowerCase();
-  return texto.includes("jwt expired") || texto.includes("invalid claim");
+  return (
+    texto.includes("jwt expired") ||
+    texto.includes("jwt") ||
+    texto.includes("invalid claim")
+  );
 }
 
 /** Todavía no corrieron `supabase/01-endurecer-esquema.sql`: no existe el RPC. */
@@ -84,6 +114,21 @@ export function faltaLaFuncion(
     texto.includes("schema cache") ||
     (texto.includes("function") && texto.includes("does not exist"))
   );
+}
+
+/**
+ * El servidor rechazó la fila por permisos.
+ *
+ * Con la sesión buena esto es un problema de verdad (una política mal puesta).
+ * Sin sesión es lo que devuelve el servidor cuando supabase-js manda la clave
+ * anónima, y ese caso se ataja antes de llegar acá.
+ */
+export function esPermisoDenegado(
+  error: ErrorSupabase | null | undefined,
+): boolean {
+  if (!error) return false;
+  if (error.code === "42501") return true;
+  return (error.message ?? "").toLowerCase().includes("row-level security");
 }
 
 /** El saldo del fiado se iría por debajo de cero. */

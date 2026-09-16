@@ -19,6 +19,8 @@ import {
   Trash2,
   X,
   PieChart as PieIcon,
+  AlertTriangle,
+  Upload,
 } from "lucide-react";
 import {
   Merchant,
@@ -125,10 +127,32 @@ export default function DashboardPage() {
     porSubir,
     trabados,
     sincronizando,
+    sesionCaida,
     subidasHechas,
     sincronizarAhora,
     descartar,
+    reintentar,
   } = useCola(supabase, merchant?.id ?? null);
+
+  // Apretar "Mandar" tiene que contestar algo. Antes no contestaba nada y la
+  // bodeguera lo apretaba de nuevo.
+  const mandarAhora = async () => {
+    const resultado = await sincronizarAhora();
+    if (!resultado) return;
+    if (resultado.sesionCaida) return; // el aviso azul ya lo explica
+    if (resultado.sinSenal) {
+      setErrorMsg(
+        "Todavía no hay internet. Lo que anotaste sigue guardado en el teléfono y se manda solo cuando vuelva.",
+      );
+    }
+  };
+
+  const reintentarUno = async (seq: number) => {
+    const resultado = await reintentar(seq);
+    if (resultado?.sinSenal) {
+      setErrorMsg("Todavía no hay internet. Lo dejamos guardado y se reintenta solo.");
+    }
+  };
 
   // Consulta los movimientos de un día. Devuelve los datos en vez de escribir
   // el estado para que quien llama pueda descartar una respuesta vieja.
@@ -257,7 +281,13 @@ export default function DashboardPage() {
     [delServidor, cola, selectedDate],
   );
 
-  const pendientesDelDia = transactions.filter((t) => t.pendiente).length;
+  // Dos estados distintos, dos números distintos. Juntarlos hacía que la
+  // pantalla dijera "todavía no suben" de algo que el servidor ya había
+  // rechazado, que es exactamente lo contrario.
+  const faltaMandar = transactions.filter(
+    (t) => t.pendiente && !t.trabado,
+  ).length;
+  const conProblema = transactions.filter((t) => t.trabado).length;
 
   // Manejar cambio de fecha con flechas
   const handleShiftDate = (days: number) => {
@@ -524,11 +554,14 @@ export default function DashboardPage() {
       <main className="max-w-md mx-auto p-4 space-y-4">
         <EstadoConexion
           sinSenal={sinSenal}
+          sesionCaida={sesionCaida}
           guardadoEl={guardadoEl}
-          porSubir={porSubir.length}
+          porMandar={porSubir.length}
           trabados={trabados}
           sincronizando={sincronizando}
-          onReintentar={() => void sincronizarAhora()}
+          onMandar={() => void mandarAhora()}
+          onVolverAEntrar={() => router.push("/login")}
+          onReintentar={(seq) => void reintentarUno(seq)}
           onDescartar={(seq) => void descartar(seq)}
         />
 
@@ -612,13 +645,16 @@ export default function DashboardPage() {
           </div>
 
           {/* Si la cuenta incluye plata que todavía no subió, se dice acá mismo:
-              la cifra es correcta para la bodeguera, pero no es la del servidor. */}
-          {pendientesDelDia > 0 && (
-            <p className="text-[11px] font-bold text-amber-700 mt-1">
-              Incluye{" "}
-              {pendientesDelDia === 1
-                ? "1 anotación que todavía no sube"
-                : `${pendientesDelDia} anotaciones que todavía no suben`}
+              la cifra es correcta para la bodeguera, pero no es la del servidor.
+              Lo que falta mandar y lo que no se pudo mandar se cuentan aparte. */}
+          {(faltaMandar > 0 || conProblema > 0) && (
+            <p className="text-xs font-bold text-amber-800 mt-1.5">
+              Incluye
+              {faltaMandar > 0 &&
+                ` ${faltaMandar} que ${faltaMandar === 1 ? "falta" : "faltan"} mandar`}
+              {faltaMandar > 0 && conProblema > 0 && " y"}
+              {conProblema > 0 &&
+                ` ${conProblema} que no se ${conProblema === 1 ? "pudo" : "pudieron"} mandar`}
               .
             </p>
           )}
@@ -770,8 +806,15 @@ export default function DashboardPage() {
           </div>
 
           {transactions.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-6">
-              No hay registros para este día.
+            /* Sin señal no podemos afirmar que no haya nada: solo sabemos que
+               no lo tenemos. Decir "no hay registros" sería mentirle sobre su
+               propia plata. */
+            <p className="text-sm text-slate-600 text-center py-6 px-2 leading-snug">
+              {sinSenal && !guardadoEl
+                ? "Sin señal, y de este día no hay nada guardado en el teléfono. No podemos mostrarte lo que anotaste. Lo que anotes ahora sí queda guardado."
+                : sinSenal
+                  ? "No hay movimientos guardados de este día."
+                  : "No hay registros para este día."}
             </p>
           ) : (
             <div className="space-y-2">
@@ -816,15 +859,21 @@ export default function DashboardPage() {
                         <span className="font-semibold text-slate-500">
                           {tx.payment_method || "Efectivo"}
                         </span>
+                        {/* Chip sólido, no pastel a 10px: es la diferencia
+                            entre plata que está en el servidor y plata que no. */}
                         {tx.pendiente && (
-                          <>
-                            <span className="inline-block w-1 h-1 rounded-full bg-slate-300" />
-                            <span
-                              className={`font-bold ${tx.trabado ? "text-rose-700" : "text-amber-700"}`}
-                            >
-                              {tx.trabado ? "no subió" : "sin subir"}
-                            </span>
-                          </>
+                          <span
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-bold text-white ${
+                              tx.trabado ? "bg-rose-700" : "bg-amber-600"
+                            }`}
+                          >
+                            {tx.trabado ? (
+                              <AlertTriangle className="w-3 h-3" />
+                            ) : (
+                              <Upload className="w-3 h-3" />
+                            )}
+                            {tx.trabado ? "no se pudo mandar" : "falta mandar"}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -1103,9 +1152,9 @@ export default function DashboardPage() {
                   setConfirmarSalida(false);
                   void cerrarSesion();
                 }}
-                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition-colors"
+                className="flex-1 py-2.5 bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 font-bold text-xs rounded-xl transition-colors"
               >
-                Salir igual
+                Salir y borrar lo que falta
               </button>
             </div>
           </div>

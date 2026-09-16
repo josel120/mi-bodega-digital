@@ -6,10 +6,12 @@ import {
   contadorDeSubidas,
   descartarPendiente,
   leerCola,
+  reintentarPendiente,
+  reintentarTodo,
   subirPendientes,
   suscribirseACola,
 } from "./cola";
-import type { Pendiente } from "./tipos";
+import type { Pendiente, ResultadoSubida } from "./tipos";
 
 /**
  * La cola vista desde una pantalla, y los momentos en que se intenta subir.
@@ -26,6 +28,8 @@ import type { Pendiente } from "./tipos";
 export function useCola(supabase: SupabaseClient, merchantId: string | null) {
   const [cola, setCola] = useState<Pendiente[]>([]);
   const [sincronizando, setSincronizando] = useState(false);
+  // La cuenta se cerró sola: la cola está en pausa, no trabada.
+  const [sesionCaida, setSesionCaida] = useState(false);
   // Cambia cada vez que algo sube de verdad; las pantallas lo usan para volver
   // a preguntarle al servidor y quedarse con la versión oficial.
   const [subidasHechas, setSubidasHechas] = useState(0);
@@ -53,11 +57,21 @@ export function useCola(supabase: SupabaseClient, merchantId: string | null) {
     };
   }, [refrescar]);
 
-  const sincronizarAhora = useCallback(async () => {
-    if (!merchantId) return;
+  /**
+   * Devuelve el resultado, no lo tira.
+   *
+   * Antes esto se descartaba y apretar "Mandar" sin señal no cambiaba nada en
+   * pantalla: ni un aviso, ni una letra. La bodeguera lo volvía a apretar.
+   */
+  const sincronizarAhora = useCallback(async (): Promise<
+    ResultadoSubida | undefined
+  > => {
+    if (!merchantId) return undefined;
     setSincronizando(true);
     try {
-      await subirPendientes(supabase, merchantId);
+      const resultado = await subirPendientes(supabase, merchantId);
+      setSesionCaida(resultado.sesionCaida);
+      return resultado;
     } finally {
       setSincronizando(false);
     }
@@ -99,13 +113,32 @@ export function useCola(supabase: SupabaseClient, merchantId: string | null) {
     await descartarPendiente(seq);
   }, []);
 
+  /** Destraba y vuelve a intentar en el acto, sin esperar los 20 segundos. */
+  const reintentar = useCallback(
+    async (seq: number) => {
+      if (!merchantId) return undefined;
+      await reintentarPendiente(merchantId, seq);
+      return sincronizarAhora();
+    },
+    [merchantId, sincronizarAhora],
+  );
+
+  const reintentarTodos = useCallback(async () => {
+    if (!merchantId) return undefined;
+    await reintentarTodo(merchantId);
+    return sincronizarAhora();
+  }, [merchantId, sincronizarAhora]);
+
   return {
     cola,
     porSubir,
     trabados,
     sincronizando,
+    sesionCaida,
     subidasHechas,
     sincronizarAhora,
     descartar,
+    reintentar,
+    reintentarTodos,
   };
 }

@@ -65,10 +65,30 @@ export default function DebtsPage() {
     porSubir,
     trabados,
     sincronizando,
+    sesionCaida,
     subidasHechas,
     sincronizarAhora,
     descartar,
+    reintentar,
   } = useCola(supabase, merchant?.id ?? null);
+
+  const mandarAhora = async () => {
+    const resultado = await sincronizarAhora();
+    if (resultado?.sinSenal) {
+      setErrorMsg(
+        "Todavía no hay internet. Lo que anotaste sigue guardado en el teléfono y se manda solo cuando vuelva.",
+      );
+    }
+  };
+
+  const reintentarUno = async (seq: number) => {
+    const resultado = await reintentar(seq);
+    if (resultado?.sinSenal) {
+      setErrorMsg(
+        "Todavía no hay internet. Lo dejamos guardado y se reintenta solo.",
+      );
+    }
+  };
 
   // 1) Sesión y bodega.
   useEffect(() => {
@@ -327,11 +347,14 @@ export default function DebtsPage() {
       <main className="max-w-md mx-auto p-4 space-y-4">
         <EstadoConexion
           sinSenal={sinSenal}
+          sesionCaida={sesionCaida}
           guardadoEl={guardadoEl}
-          porSubir={porSubir.length}
+          porMandar={porSubir.length}
           trabados={trabados}
           sincronizando={sincronizando}
-          onReintentar={() => void sincronizarAhora()}
+          onMandar={() => void mandarAhora()}
+          onVolverAEntrar={() => router.push("/login")}
+          onReintentar={(seq) => void reintentarUno(seq)}
           onDescartar={(seq) => void descartar(seq)}
         />
 
@@ -403,8 +426,12 @@ export default function DebtsPage() {
           </h2>
 
           {debts.length === 0 ? (
-            <p className="text-xs text-slate-400 text-center py-4">
-              No tienes fiados registrados.
+            /* Sin nada guardado no podemos decir que no tenga fiados: no lo
+               sabemos. Es plata que le deben. */
+            <p className="text-sm text-slate-600 text-center py-4 px-2 leading-snug">
+              {sinSenal && !guardadoEl
+                ? "Sin señal, y la lista de fiados no está guardada en este teléfono. Necesitas internet para verla."
+                : "No tienes fiados registrados."}
             </p>
           ) : (
             <div className="space-y-3">
@@ -443,11 +470,11 @@ export default function DebtsPage() {
                   {/* Que nunca quede duda de qué cifra es la del servidor. */}
                   {customer.pendiente && (
                     <p
-                      className={`text-[11px] font-bold ${customer.trabado ? "text-rose-700" : "text-amber-700"}`}
+                      className={`text-xs font-bold ${customer.trabado ? "text-rose-800" : "text-amber-800"}`}
                     >
                       {customer.trabado
-                        ? "Algo de este cliente no se pudo subir. Mira el aviso rojo de arriba."
-                        : `Este saldo incluye ${customer.sinSubir === 1 ? "1 anotación" : `${customer.sinSubir} anotaciones`} que todavía no suben.`}
+                        ? "Algo de este cliente no se pudo mandar. Mira el aviso rojo de arriba."
+                        : `Este saldo incluye ${customer.sinSubir === 1 ? "1 anotación que falta" : `${customer.sinSubir} anotaciones que faltan`} mandar.`}
                     </p>
                   )}
 

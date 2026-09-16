@@ -13,12 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CustomerDebt } from "@/types/database";
 import { diaLocalDeISO } from "@/lib/fechas";
-import {
-  TIENDA_PENDIENTES,
-  conTienda,
-  esperar,
-  leerTodo,
-} from "./db";
+import { TIENDA_PENDIENTES, conTienda, esperar, leerTodo } from "./db";
 import {
   ponerCambiosEnCopia,
   ponerFiadoEnCopia,
@@ -29,8 +24,9 @@ import {
 import {
   esDuplicado,
   esErrorDeRed,
+  esPermisoDenegado,
   esSaldoNegativo,
-  esSesionVencida,
+  esSesionCaida,
   faltaLaFuncion,
   type ErrorSupabase,
 } from "./errores";
@@ -100,13 +96,52 @@ async function guardarEnCola(pendiente: Pendiente): Promise<void> {
 /**
  * Tirar a la basura algo que quedó trabado.
  *
- * Existe porque un pendiente rechazado por el servidor no se destraba solo: sin
- * este botón la bodeguera se queda con un aviso rojo para siempre. Lo llama ella
- * a propósito, después de leer qué era, nunca el código por su cuenta.
+ * Lo llama la bodeguera a propósito, después de leer qué era y de confirmarlo,
+ * nunca el código por su cuenta. Borra plata que no está en ningún otro lado.
  */
 export async function descartarPendiente(seq: number): Promise<void> {
   await sacarDeCola(seq);
   avisar();
+}
+
+/**
+ * Volver a poner en la fila algo que había quedado trabado.
+ *
+ * Sin esto, un trabado no se destrababa NUNCA: la pasada de subida lo salta, y
+ * se comprobó que con una sesión nueva y buena la app hacía cero intentos de
+ * volver a mandarlo. La única salida era borrarlo. Con esto, lo que se trabó
+ * porque la cuenta se había cerrado vuelve a subir apenas ella entra de nuevo.
+ */
+export async function reintentarPendiente(
+  merchantId: string,
+  seq: number,
+): Promise<void> {
+  const cola = await leerCola(merchantId);
+  const pendiente = cola.find((p) => p.seq === seq);
+  if (!pendiente) return;
+
+  pendiente.trabado = false;
+  pendiente.motivo = null;
+  pendiente.intentos = 0;
+
+  await guardarEnCola(pendiente);
+  avisar();
+}
+
+/** Destraba todo de una: sirve después de volver a entrar. */
+export async function reintentarTodo(merchantId: string): Promise<number> {
+  const cola = await leerCola(merchantId);
+  const trabados = cola.filter((p) => p.trabado);
+
+  for (const pendiente of trabados) {
+    pendiente.trabado = false;
+    pendiente.motivo = null;
+    pendiente.intentos = 0;
+    await guardarEnCola(pendiente);
+  }
+
+  if (trabados.length > 0) avisar();
+  return trabados.length;
 }
 
 /** Si el movimiento todavía no subió, se edita en la cola y no viaja nunca la versión vieja. */
@@ -203,6 +238,14 @@ export async function anotar(
         "Sin señal y este teléfono no deja guardar en su memoria. No se anotó: intenta de nuevo cuando vuelva el internet.",
     };
   }
+  if (desenlace.estado === "sesion") {
+    return {
+      ok: false,
+      enCola: false,
+      mensaje:
+        "Tu cuenta se cerró sola y este teléfono no deja guardar en su memoria. No se anotó: vuelve a entrar e inténtalo otra vez.",
+    };
+  }
   return { ok: false, enCola: false, mensaje: desenlace.motivo };
 }
 
@@ -213,6 +256,8 @@ export async function anotar(
 type Desenlace =
   | { estado: "ok"; saldo?: number }
   | { estado: "sin_senal" }
+  /** Falta la credencial, no falla la anotación: se pausa, no se traba. */
+  | { estado: "sesion" }
   | { estado: "trabado"; motivo: string };
 
 /**
@@ -271,6 +316,7 @@ async function ejecutar(
       // anterior cuya respuesta nunca llegó. No es un error: es el final feliz.
       if (esDuplicado(error)) return { estado: "ok" };
       if (esErrorDeRed(error)) return { estado: "sin_senal" };
+      if (esSesionCaida(error)) return { estado: "sesion" };
       return {
         estado: "trabado",
         motivo: `No se pudo subir ${op.fila.type === "expense" ? "el gasto" : "la venta"} de ${soles(op.fila.amount)}: ${mensajeCorto(error)}`,
@@ -286,6 +332,7 @@ async function ejecutar(
 
       if (error) {
         if (esErrorDeRed(error)) return { estado: "sin_senal" };
+        if (esSesionCaida(error)) return { estado: "sesion" };
         return {
           estado: "trabado",
           motivo: `No se pudo guardar el cambio del movimiento de ${soles(op.cambios.amount)}: ${mensajeCorto(error)}`,
@@ -308,6 +355,7 @@ async function ejecutar(
         .eq("id", op.id);
       if (!error) return { estado: "ok" }; // Borrar dos veces da lo mismo.
       if (esErrorDeRed(error)) return { estado: "sin_senal" };
+      if (esSesionCaida(error)) return { estado: "sesion" };
       return {
         estado: "trabado",
         motivo: `No se pudo borrar un movimiento: ${mensajeCorto(error)}`,
@@ -321,6 +369,7 @@ async function ejecutar(
       if (!error) return { estado: "ok" };
       if (esDuplicado(error)) return { estado: "ok" };
       if (esErrorDeRed(error)) return { estado: "sin_senal" };
+      if (esSesionCaida(error)) return { estado: "sesion" };
       return {
         estado: "trabado",
         motivo: `No se pudo guardar al cliente ${op.fila.customer_name}: ${mensajeCorto(error)}`,
@@ -332,11 +381,26 @@ async function ejecutar(
   }
 }
 
+/**
+ * El porqué del rechazo, en castellano.
+ *
+ * Antes esto reenviaba el texto crudo de Postgres y la bodeguera terminaba
+ * leyendo "new row violates row-level security policy for table transactions".
+ * El código se conserva al final para que quien dé soporte sepa qué pasó sin
+ * tener que adivinar.
+ */
 function mensajeCorto(error: ErrorSupabase): string {
-  if (esSesionVencida(error)) {
-    return "tu sesión se venció, vuelve a entrar con internet";
+  if (esSesionCaida(error)) {
+    return "tu cuenta se cerró sola; vuelve a entrar y toca Reintentar";
   }
-  return error.message?.slice(0, 120) ?? "el servidor lo rechazó";
+  if (esPermisoDenegado(error)) {
+    return "el servidor no lo aceptó; si acabas de volver a entrar, toca Reintentar";
+  }
+  if (esSaldoNegativo(error)) {
+    return "al servidor no le cuadra ese monto";
+  }
+  const codigo = error.code ? ` (código ${error.code})` : "";
+  return `el servidor lo rechazó${codigo}`;
 }
 
 /**
@@ -378,6 +442,7 @@ async function subirAjusteFiado(
 
   if (!rpc.error) return { estado: "ok", saldo: Number(rpc.data) };
   if (esErrorDeRed(rpc.error)) return { estado: "sin_senal" };
+  if (esSesionCaida(rpc.error)) return { estado: "sesion" };
   if (esSaldoNegativo(rpc.error)) return trabadoPorSaldo(op);
   if (!faltaLaFuncion(rpc.error)) {
     return {
@@ -396,6 +461,7 @@ async function subirAjusteFiado(
 
     if (lectura.error) {
       if (esErrorDeRed(lectura.error)) return { estado: "sin_senal" };
+      if (esSesionCaida(lectura.error)) return { estado: "sesion" };
       return {
         estado: "trabado",
         motivo: `No se pudo aplicar ${describirAjuste(op)}: ${mensajeCorto(lectura.error)}`,
@@ -424,6 +490,7 @@ async function subirAjusteFiado(
 
     if (escritura.error) {
       if (esErrorDeRed(escritura.error)) return { estado: "sin_senal" };
+      if (esSesionCaida(escritura.error)) return { estado: "sesion" };
       if (esSaldoNegativo(escritura.error)) return trabadoPorSaldo(op, actual);
       return {
         estado: "trabado",
@@ -451,7 +518,7 @@ function trabadoPorSaldo(
     saldoServidor === undefined ? "" : ` Ahora debe ${soles(saldoServidor)}.`;
   return {
     estado: "trabado",
-    motivo: `El abono de ${soles(Math.abs(op.delta))} de ${op.nombre} ya no cabe en su deuda: alguien la cobró desde otro teléfono.${cuanto} Nada se recortó solo: revisa cuánto le toca de vuelto y descarta este aviso.`,
+    motivo: `El abono de ${soles(Math.abs(op.delta))} de ${op.nombre} ya no cabe en su deuda: alguien la cobró desde otro teléfono.${cuanto} Nada se recortó solo. Revisa cuánto le toca de vuelto: si lo arreglaste, toca Reintentar.`,
   };
 }
 
@@ -461,6 +528,41 @@ export function describirAjuste(
   return op.delta >= 0
     ? `el fiado de ${soles(op.delta)} de ${op.nombre}`
     : `el abono de ${soles(-op.delta)} de ${op.nombre}`;
+}
+
+/**
+ * Qué se lleva por delante el botón de borrar, dicho con el monto.
+ *
+ * "Descartar" a secas no le dice a nadie que está tirando una venta de S/ 15.
+ * El botón tiene que nombrar la plata, porque es lo único que se pierde y no
+ * hay de dónde recuperarla.
+ */
+export function textoDeBorrado(pendiente: Pendiente): {
+  boton: string;
+  pregunta: string;
+  detalle: string;
+} {
+  const op = pendiente.op;
+
+  if (op.tipo === "ajustar_fiado") {
+    const que =
+      op.delta >= 0
+        ? `el fiado de ${soles(op.delta)}`
+        : `el abono de ${soles(-op.delta)}`;
+    return {
+      boton: `Borrar ${que}`,
+      pregunta: `¿Borrar ${que} de ${op.nombre}?`,
+      detalle: `La deuda de ${op.nombre} se queda como está en el servidor. Si el dinero cambió de manos, vas a tener que anotarlo de nuevo a mano.`,
+    };
+  }
+
+  const que = describirPendiente(pendiente).toLowerCase();
+  return {
+    boton: `Borrar ${que}`,
+    pregunta: `¿Borrar ${que}?`,
+    detalle:
+      "No se va a mandar nunca y no hay cómo recuperarla. Solo está en este teléfono.",
+  };
 }
 
 /** Texto para el aviso rojo de lo que quedó trabado. */
@@ -492,6 +594,44 @@ let subidasTotales = 0;
  */
 export function contadorDeSubidas(): number {
   return subidasTotales;
+}
+
+type EstadoSesion = "ok" | "caida" | "sin_senal";
+
+/**
+ * ¿Hay sesión con qué subir?
+ *
+ * `getSession()` lee del teléfono y, si el token venció, intenta renovarlo. Si
+ * devuelve sesión, se sube. Si no:
+ *
+ *  - con el teléfono sin red, lo más probable es que la renovación no haya
+ *    podido salir. Eso es falta de señal, no una cuenta caída: se espera.
+ *  - con red, la cuenta se cerró de verdad (el refresh token murió por
+ *    rotación, por una restauración de copia o por meses sin entrar). Ahí sí
+ *    hay que decírselo y pedirle que vuelva a entrar.
+ *
+ * En los dos casos la cola queda intacta.
+ */
+async function revisarSesion(supabase: SupabaseClient): Promise<EstadoSesion> {
+  let hayApertura: boolean;
+
+  try {
+    const { data } = await supabase.auth.getSession();
+    hayApertura = Boolean(data.session);
+  } catch {
+    // No se pudo ni preguntar (el candado de la sesión ocupado, por ejemplo).
+    // Eso NO es motivo para parar la cola y menos para decirle a la bodeguera
+    // que su cuenta se cerró: se intenta igual y que conteste el servidor. Si
+    // el token está vencido de verdad, vuelve con PGRST303 y se pausa ahí.
+    return "ok";
+  }
+
+  if (hayApertura) return "ok";
+
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "sin_senal";
+  }
+  return "caida";
 }
 
 let enCurso: Promise<ResultadoSubida> | null = null;
@@ -542,9 +682,34 @@ async function correrSubida(
 ): Promise<ResultadoSubida> {
   let subidos = 0;
   let sinSenal = false;
+  let sesionCaida = false;
 
   try {
     const cola = await leerCola(merchantId);
+
+    // Antes de tocar nada: ¿hay con qué entrar?
+    //
+    // Esto se mira ACÁ y no en el error de vuelta porque supabase-js, cuando no
+    // puede renovar la sesión, manda la clave anónima igual, y el servidor
+    // responde 403 de RLS. Adivinarlo por el error obligaría a tratar todo 403
+    // como "falta sesión", y un permiso mal puesto de verdad quedaría
+    // reintentando en silencio para siempre. Probado contra la base: con la
+    // sesión muerta salían tres POST seguidos a 403 y las tres ventas se
+    // trababan de una, con texto de Postgres en inglés.
+    if (cola.length > 0) {
+      const sesion = await revisarSesion(supabase);
+      if (sesion !== "ok") {
+        // Nadie se traba: la cola queda EN PAUSA, entera, tal cual.
+        return {
+          subidos: 0,
+          restantes: cola.length,
+          trabados: cola.filter((p) => p.trabado).length,
+          sinSenal: sesion === "sin_senal",
+          sesionCaida: sesion === "caida",
+        };
+      }
+    }
+
     // Si algo quedó trabado, lo que venga después sobre la MISMA fila tampoco
     // puede subir: editar un movimiento que nunca se creó no tiene sentido.
     const trabadas = new Set<string>();
@@ -580,6 +745,15 @@ async function correrSubida(
         break;
       }
 
+      // La sesión se cayó en pleno vuelo (el token venció entre que miramos y
+      // que mandamos). La anotación está bien: se deja como está y se para.
+      if (desenlace.estado === "sesion") {
+        sesionCaida = true;
+        pendiente.intentos += 1;
+        await guardarEnCola(pendiente);
+        break;
+      }
+
       pendiente.trabado = true;
       pendiente.intentos += 1;
       pendiente.motivo = desenlace.motivo;
@@ -593,6 +767,7 @@ async function correrSubida(
       restantes: restante.length,
       trabados: restante.filter((p) => p.trabado).length,
       sinSenal,
+      sesionCaida,
     };
   } finally {
     subidasTotales += subidos;

@@ -73,4 +73,10 @@ export interface ResultadoSubida {
   restantes: number;
   trabados: number;
   sinSenal: boolean;
+  /**
+   * No hay sesión: la cola quedó EN PAUSA, sin tocar ni una anotación. No es lo
+   * mismo que `trabados`: acá no hay nada que decidir, solo hay que volver a
+   * entrar y todo sube solo.
+   */
+  sesionCaida: boolean;
 }
