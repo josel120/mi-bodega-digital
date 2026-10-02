@@ -105,12 +105,16 @@ vez. Cada bloque explica qué problema tapa.
 
 ## Lo que falta antes de cobrar
 
+Checkout prepago preparado (2026-10-02): Edge Functions `crear-preferencia` y
+`webhook-mercadopago`, SQL de membresías y pantalla conectada. Sigue apagado hasta
+verificar configuración y sandbox. Ver [flujo y habilitación](docs/pagos-autoservicio.md).
+
 - **Correo propio en Supabase.** Sin SMTP configurado, el correo de "olvidé mi
   contraseña" no le llega a un cliente real y pierde su cuaderno.
 - **El guion de `supabase/`**, corrido y verificado.
-- **Cobro.** La pantalla de planes llama a un endpoint de Mercado Pago que no
-  existe: un sitio estático no puede crear preferencias de pago. Hace falta una
-  Edge Function de Supabase para eso y para recibir el webhook.
+- **Cobro.** Desplegar y probar las Edge Functions preparadas, aplicar SQL de
+  membresías y configurar webhook firmado. La renovación inicial es manual;
+  la suscripción recurrente automática sigue pendiente.
 - **Aviso de privacidad.** La app guarda nombres y celulares de los clientes de
   la bodega, que son datos personales de terceros (Ley 29733).
 

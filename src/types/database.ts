@@ -13,6 +13,7 @@ export interface Merchant {
   currency: string;
   subscription_status: SubscriptionStatus;
   trial_ends_at: string;
+  subscription_ends_at?: string | null;
   created_at: string;
 }
 

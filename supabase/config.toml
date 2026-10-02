@@ -1,0 +1,7 @@
+# JWT de sesión se verifica en /auth/v1/user (compatible con claves nuevas).
+# El webhook verifica HMAC antes de consultar o modificar datos.
+[functions.crear-preferencia]
+verify_jwt = false
+
+[functions.webhook-mercadopago]
+verify_jwt = false
