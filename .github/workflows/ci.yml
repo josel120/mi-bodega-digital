@@ -1,0 +1,46 @@
+name: CI
+on:
+  pull_request:
+  push:
+    branches: [master]
+permissions:
+  contents: read
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: test-public-key
+  payments-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: payments_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - run: psql -h localhost -U postgres -d payments_test -f test/payment-schema.sql
+        env:
+          PGPASSWORD: ci-only
