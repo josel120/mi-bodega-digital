@@ -14,7 +14,7 @@ import {
 import MerchantOnboarding from "@/components/MerchantOnboarding";
 import ErrorToast from "@/components/ErrorToast";
 import EstadoConexion from "@/components/EstadoConexion";
-import { parseAmount, parseMoney } from "@/lib/money";
+import { parseAmount, parseSaldoInicial } from "@/lib/money";
 import { anotar, armarPendiente, filaDeFiado } from "@/lib/offline/cola";
 import { guardarFiados, leerFiados } from "@/lib/offline/almacen";
 import { fiadosConPendientes } from "@/lib/offline/vista";
@@ -196,11 +196,13 @@ export default function DebtsPage() {
     e.preventDefault();
     if (!merchant || !customerName || !phoneNumber) return;
 
-    const balance = parseMoney(initialBalance) ?? 0;
-    if (balance < 0) {
-      setErrorMsg("La deuda inicial no puede ser negativa.");
+    // Algo escrito que no se entiende no es cero: se avisa y no se crea nada.
+    const inicial = parseSaldoInicial(initialBalance);
+    if (!inicial.ok) {
+      setErrorMsg(inicial.motivo);
       return;
     }
+    const balance = inicial.saldo;
 
     setSubmitting(true);
 
