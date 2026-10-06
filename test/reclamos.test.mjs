@@ -78,7 +78,6 @@ test("menor de edad: aparecen y se exigen los datos del apoderado", () => {
 });
 
 test("errores de la base se traducen sin mostrar textos técnicos", () => {
-  assert.match(mensajeErrorReclamo({ message: "RECLAMO_LIMITE" }), /varios reclamos/);
   assert.match(mensajeErrorReclamo({ message: "RECLAMO_FALTA_CAMPO" }), /Revisa el formulario/);
   assert.match(mensajeErrorReclamo({ message: "TypeError: Failed to fetch" }), /sigue en el formulario/);
 });

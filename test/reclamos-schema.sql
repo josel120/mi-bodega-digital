@@ -45,15 +45,15 @@ begin
   end loop;
   -- Menor con apoderado sí pasa.
   perform public.registrar_reclamo(base || '{"isMinor":"Sí","guardianName":"Rosa Pérez","guardianContact":"999888777"}');
-  -- Freno por correo: 3 registrados, 2 más pasan y el sexto se rechaza.
+  -- Nunca se rechaza por correo (podría ser el de otra persona): la 6.ª hoja
+  -- del mismo correo en 24 h entra igual, marcada para revisión.
   perform public.registrar_reclamo(base);
   perform public.registrar_reclamo(base);
-  begin
-    perform public.registrar_reclamo(base);
-    raise exception 'Sin freno por correo';
-  exception when raise_exception then
-    if sqlerrm <> 'RECLAMO_LIMITE' then raise; end if;
-  end;
+  r1 := public.registrar_reclamo(base);
+  if r1->>'codigo' is null then raise exception 'Se rechazó una hoja por el correo'; end if;
+  r2 := public.registrar_reclamo(base);
+  if r2->>'codigo' is null then raise exception 'Se rechazó una hoja por el correo'; end if;
+  if r1 ? 'posible_spam' then raise exception 'La constancia revela la marca interna'; end if;
   -- Otro correo no queda bloqueado por el anterior.
   perform public.registrar_reclamo(base || '{"email":"otra@example.test"}');
 end $$;
@@ -66,7 +66,10 @@ do $$ begin
      or has_table_privilege('authenticated', 'public.complaints', 'update') then
     raise exception 'La tabla de reclamos quedó expuesta';
   end if;
-  if (select count(*) from public.complaints) <> 6 then raise exception 'Cantidad de reclamos inesperada'; end if;
+  if (select count(*) from public.complaints) <> 8 then raise exception 'Cantidad de reclamos inesperada'; end if;
+  -- Las 5 primeras del correo sin marca; la 6.ª y 7.ª marcadas; otro correo, sin marca.
+  if (select count(*) from public.complaints where posible_spam) <> 2 then raise exception 'Marca posible_spam incorrecta'; end if;
+  if exists(select 1 from public.complaints where posible_spam and email <> 'ana@example.test') then raise exception 'Se marcó otro correo'; end if;
   if exists(select 1 from public.complaints where email <> lower(email)) then raise exception 'Correo sin normalizar'; end if;
 end $$;
 

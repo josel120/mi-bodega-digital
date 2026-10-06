@@ -257,6 +257,7 @@ create table if not exists public.complaints (
   email text not null check (email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$' and char_length(email) <= 254),
   datos jsonb not null check (jsonb_typeof(datos) = 'object' and octet_length(datos::text) <= 20000),
   estado text not null default 'recibido' check (estado in ('recibido', 'respondido')),
+  posible_spam boolean not null default false,
   respuesta text,
   respondido_at timestamptz,
   created_at timestamptz not null default now(),
@@ -265,6 +266,8 @@ create table if not exists public.complaints (
   )
 );
 
+-- Por si la tabla ya existía de una versión anterior de este guion.
+alter table public.complaints add column if not exists posible_spam boolean not null default false;
 alter sequence public.complaints_correlativo_seq owned by public.complaints.correlativo;
 alter table public.complaints enable row level security;
 revoke all on public.complaints from public, anon, authenticated;
@@ -295,6 +298,7 @@ declare
   v_tipo text;
   v_fila public.complaints;
   v_numero bigint;
+  v_spam boolean;
 begin
   if p_datos is null or jsonb_typeof(p_datos) <> 'object' then raise exception 'RECLAMO_INVALIDO'; end if;
   for v_clave, v_valor in select key, value from jsonb_each(p_datos) loop
@@ -332,22 +336,24 @@ begin
   v_email := lower(btrim(p_datos ->> 'email'));
   v_tipo := lower(p_datos ->> 'claimType');
 
-  -- Freno al relleno masivo sin bloquear a quien reclama de verdad: un mismo
-  -- correo no registra más de 5 en 24 horas. No es un límite global, para que
-  -- un atacante no pueda cerrar el Libro a los demás.
-  if (select count(*) from public.complaints
-       where lower(email) = v_email and created_at > now() - interval '24 hours') >= 5 then
-    raise exception 'RECLAMO_LIMITE';
-  end if;
+  -- El Libro SIEMPRE recibe. Nada se rechaza por el correo: el correo no está
+  -- verificado, y un tope por correo dejaría que cualquiera mande 5 hojas con
+  -- el correo de otra persona y le impida reclamar. Si un mismo correo ya
+  -- tiene 5 o más hojas en 24 horas, la hoja entra igual y queda marcada como
+  -- `posible_spam` para que el dueño la revise primero. Contra el relleno
+  -- masivo quedan los topes de tamaño por hoja; un freno por IP o captcha
+  -- iría en una Edge Function (pendiente, ver docs/sandbox-mercadopago.md).
+  v_spam := (select count(*) from public.complaints
+              where lower(email) = v_email and created_at > now() - interval '24 hours') >= 5;
 
   -- Código con el año de Lima y el correlativo: MBD-2026-000001. `now()` es la
   -- hora de la transacción, la misma que queda en created_at.
   v_numero := nextval('public.complaints_correlativo_seq');
-  insert into public.complaints (correlativo, codigo, tipo, email, datos, created_at)
+  insert into public.complaints (correlativo, codigo, tipo, email, datos, posible_spam, created_at)
   values (
     v_numero,
     'MBD-' || to_char(now() at time zone 'America/Lima', 'YYYY') || '-' || lpad(v_numero::text, 6, '0'),
-    v_tipo, v_email, p_datos, now()
+    v_tipo, v_email, p_datos, v_spam, now()
   )
   returning * into v_fila;
 

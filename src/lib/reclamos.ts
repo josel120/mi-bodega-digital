@@ -128,9 +128,6 @@ export function validarReclamo(
 /** Traduce el error de la base a algo que la persona pueda resolver. */
 export function mensajeErrorReclamo(error: { message?: string } | null): string {
   const texto = error?.message ?? "";
-  if (texto.includes("RECLAMO_LIMITE")) {
-    return "Ya registraste varios reclamos hoy con este correo. Si necesitas agregar algo, escríbenos o vuelve mañana.";
-  }
   if (texto.includes("RECLAMO_FALTA_CAMPO") || texto.includes("RECLAMO_INVALIDO")) {
     return "Algún dato no se pudo guardar así. Revisa el formulario y vuelve a enviar.";
   }
