@@ -99,7 +99,9 @@ en el SQL Editor antes de abrir la app a clientes de verdad. Agrega lo que la
 base todavía no tiene: una bodega por cuenta, montos que no pueden ser
 negativos, índices, el candado que impide que un usuario se regale el plan
 pagado y la función que aplica los abonos anotados sin señal exactamente una
-vez. Cada bloque explica qué problema tapa.
+vez. Cada bloque explica qué problema tapa. Después van
+`02-membresias-prepago.sql` y `03-legal-y-cuenta.sql` (borrado de cuenta, Libro
+de Reclamaciones y arreglos de pagos); los tres se prueban en CI.
 
 ---
 
@@ -115,7 +117,9 @@ verificar configuración y sandbox. Ver [flujo y habilitación](docs/pagos-autos
 - **Cobro.** Desplegar y probar las Edge Functions preparadas, aplicar SQL de
   membresías y configurar webhook firmado. La renovación inicial es manual;
   la suscripción recurrente automática sigue pendiente.
-- **Aviso de privacidad.** La app guarda nombres y celulares de los clientes de
-  la bodega, que son datos personales de terceros (Ley 29733).
+- **Textos legales.** Privacidad, términos, devoluciones y Libro de
+  Reclamaciones están publicados como borradores (`src/content/legal/`): faltan
+  los datos entre corchetes y la revisión de un abogado. El botón de borrar la
+  cuenta está en *Cuenta* y necesita la Edge Function `borrar-cuenta` desplegada.
 
 El detalle largo, con el porqué de cada uno, está en `TECH_LEAD_PROPOSALS.md`.

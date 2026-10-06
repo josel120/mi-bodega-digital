@@ -21,7 +21,9 @@ import {
   PieChart as PieIcon,
   AlertTriangle,
   Upload,
+  UserCog,
 } from "lucide-react";
+import Link from "next/link";
 import {
   Merchant,
   PaymentMethod,
@@ -36,7 +38,6 @@ import {
   sesionLocal,
   leerBodegaGuardada,
   guardarBodega,
-  olvidarBodega,
 } from "@/lib/merchant";
 import ErrorToast from "@/components/ErrorToast";
 import EstadoConexion from "@/components/EstadoConexion";
@@ -55,7 +56,7 @@ import {
 import { movimientosConPendientes } from "@/lib/offline/vista";
 import { useCola } from "@/lib/offline/useCola";
 import { nuevoId } from "@/lib/offline/id";
-import { vaciarAlmacen } from "@/lib/offline/db";
+import { limpiarDispositivo } from "@/lib/dispositivo";
 import type { CambiosMovimiento, MovimientoLocal } from "@/lib/offline/tipos";
 
 function formatDateLabel(dateStr: string): string {
@@ -480,8 +481,9 @@ export default function DashboardPage() {
   // queda algo sin subir hay que avisarlo antes: esa plata no está en ningún
   // otro lado.
   const cerrarSesion = async () => {
-    olvidarBodega();
-    await vaciarAlmacen();
+    // Bodega, caja, fiados y cola fuera del teléfono (S4): en un celular
+    // compartido el siguiente no ve los clientes del fiado sin señal.
+    await limpiarDispositivo();
     await supabase.auth.signOut();
     router.push("/login");
   };
@@ -547,13 +549,24 @@ export default function DashboardPage() {
           <Store className="w-6 h-6 text-emerald-200" />
           <span className="font-bold text-lg">{merchant?.business_name}</span>
         </div>
-        <button
-          onClick={handleLogout}
-          className="p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
-          title="Cerrar Sesión"
-        >
-          <LogOut className="w-5 h-5 text-white" />
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/cuenta"
+            className="p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
+            title="Mi cuenta"
+            aria-label="Mi cuenta"
+          >
+            <UserCog className="w-5 h-5 text-white" />
+          </Link>
+          <button
+            onClick={handleLogout}
+            className="p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
+            title="Cerrar Sesión"
+            aria-label="Cerrar sesión"
+          >
+            <LogOut className="w-5 h-5 text-white" />
+          </button>
+        </div>
       </header>
 
       <main className="max-w-md mx-auto p-4 space-y-4">

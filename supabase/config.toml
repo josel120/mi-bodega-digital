@@ -5,3 +5,8 @@ verify_jwt = false
 
 [functions.webhook-mercadopago]
 verify_jwt = false
+
+# Igual que crear-preferencia: verifica la sesión en /auth/v1/user y solo
+# entonces borra los datos de ESE usuario con service_role.
+[functions.borrar-cuenta]
+verify_jwt = false

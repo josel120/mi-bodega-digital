@@ -3,9 +3,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Store, Mail, Lock, Phone, ArrowRight, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BASE_PATH } from "@/lib/base-path";
+import { ENLACES_LEGALES } from "@/components/PaginaLegal";
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -111,7 +113,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-slate-50 flex flex-col items-center justify-center gap-4 p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
         {/* Header */}
         <div className="bg-emerald-600 p-6 text-white text-center">
@@ -261,6 +263,20 @@ export default function LoginPage() {
             )}
           </button>
 
+          {isRegistering && (
+            <p className="text-base text-slate-600 text-center leading-relaxed">
+              Al registrarte aceptas los{" "}
+              <Link href="/terminos" className="font-semibold text-emerald-700 underline underline-offset-2">
+                Términos y condiciones
+              </Link>{" "}
+              y el{" "}
+              <Link href="/privacidad" className="font-semibold text-emerald-700 underline underline-offset-2">
+                Aviso de privacidad
+              </Link>
+              .
+            </p>
+          )}
+
           {!isRegistering && (
             <button
               type="button"
@@ -273,6 +289,23 @@ export default function LoginPage() {
           )}
         </form>
       </div>
+
+      {/* Públicos y a la vista: el Libro de Reclamaciones tiene que poder
+          encontrarse sin cuenta. */}
+      <nav aria-label="Documentos legales" className="w-full max-w-md">
+        <ul className="flex flex-wrap justify-center gap-x-4">
+          {ENLACES_LEGALES.map((enlace) => (
+            <li key={enlace.href}>
+              <Link
+                href={enlace.href}
+                className="inline-flex items-center min-h-11 text-base text-slate-600 underline underline-offset-2 hover:text-emerald-700"
+              >
+                {enlace.etiqueta}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
     </main>
   );
 }
