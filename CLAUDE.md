@@ -13,9 +13,10 @@ pública. De ahí salen tres reglas que no son opinables:
 
 - **No escribas rutas de API.** Cualquier `fetch("/api/...")` es código muerto:
   no hay nada detrás. Si algo necesita un secreto o correr del lado del
-  servidor, va en una Edge Function de Supabase. La pantalla de suscripción
-  todavía llama a `/api/mercadopago/create-preference`; está apagada tras el
-  flag `MOSTRAR_PLANES` justamente por eso.
+  servidor, va en una Edge Function de Supabase. Así lo hace la pantalla de
+  suscripción: llama a la función `crear-preferencia` con
+  `supabase.functions.invoke`, y sigue apagada tras el flag `MOSTRAR_PLANES`
+  hasta que el cobro esté listo.
 - **La validación en el cliente es cortesía, no seguridad.** Lo único que de
   verdad protege los datos son las políticas RLS y las restricciones de
   Postgres. Si agregas una regla de negocio sobre plata, agrégala también en
@@ -87,8 +88,10 @@ castellano y explican *por qué*, no *qué*.
 ## Antes de dar algo por terminado
 
 ```bash
-npx tsc --noEmit && npm run lint && npm run build
+npx tsc --noEmit && npm run lint && npm test && npm run build
 ```
 
-Los tres tienen que pasar. No hay tests automatizados todavía; si tocas plata o
-fiados, prueba el flujo a mano en el navegador.
+Los cuatro tienen que pasar (`npm run build` sin `.env` necesita las variables de
+ejemplo de `.github/workflows/ci.yml`). Los tests (`test/*.test.mjs`) cubren
+funciones puras; si tocas plata, fiados o el registro, prueba además el flujo a
+mano en el navegador.
