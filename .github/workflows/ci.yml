@@ -44,3 +44,9 @@ jobs:
       - run: psql -h localhost -U postgres -d payments_test -f test/payment-schema.sql
         env:
           PGPASSWORD: ci-only
+      # Base nueva: el fixture crea roles y el esquema auth simulado desde cero.
+      - run: |
+          psql -h localhost -U postgres -d postgres -c 'create database cuenta_test'
+          psql -h localhost -U postgres -d cuenta_test -f test/cuenta-schema.sql
+        env:
+          PGPASSWORD: ci-only

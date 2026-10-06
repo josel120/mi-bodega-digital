@@ -16,6 +16,8 @@ create table public.merchants (
 grant select, insert, update on public.merchants to authenticated, service_role;
 
 \ir ../supabase/02-membresias-prepago.sql
+-- 03 reemplaza el candado y la aplicación de pagos: los mismos casos deben seguir pasando.
+\ir ../supabase/03-legal-y-cuenta.sql
 
 begin;
 set local role authenticated;
