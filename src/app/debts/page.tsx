@@ -336,6 +336,7 @@ export default function DebtsPage() {
       <header className="bg-emerald-600 text-white p-4 shadow-md flex items-center gap-3">
         <button
           onClick={() => router.push("/dashboard")}
+          aria-label="Volver a la Caja Diaria"
           className="p-1.5 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-white" />
@@ -375,6 +376,7 @@ export default function DebtsPage() {
                   type="text"
                   required
                   placeholder="Nombre del Cliente (Ej. Sra. María)"
+                  aria-label="Nombre del cliente"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -389,6 +391,7 @@ export default function DebtsPage() {
                   type="tel"
                   required
                   placeholder="Celular (9 dígitos)"
+                  aria-label="Celular del cliente"
                   value={phoneNumber}
                   onChange={(e) => setPhoneNumber(e.target.value)}
                   className="w-full pl-9 pr-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -400,6 +403,7 @@ export default function DebtsPage() {
                   type="text"
                   inputMode="decimal"
                   placeholder="Deuda inicial S/"
+                  aria-label="Deuda inicial en soles (opcional)"
                   value={initialBalance}
                   onChange={(e) => setInitialBalance(e.target.value)}
                   className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -483,13 +487,17 @@ export default function DebtsPage() {
                   {/* Acciones */}
                   <div className="flex gap-2 pt-1 border-t border-slate-200/50">
                     <button
-                      onClick={() =>
+                      onClick={() => {
+                        // El monto escrito para otro cliente no se arrastra:
+                        // un abono de María no puede terminar en la cuenta de Juan.
+                        setAdjustAmount("");
                         setSelectedCustomerId(
                           selectedCustomerId === customer.id
                             ? null
                             : customer.id,
-                        )
-                      }
+                        );
+                      }}
+                      aria-expanded={selectedCustomerId === customer.id}
                       className="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors"
                     >
                       Ajustar Deuda
@@ -514,6 +522,7 @@ export default function DebtsPage() {
                         type="text"
                         inputMode="decimal"
                         placeholder="Monto S/"
+                        aria-label={`Monto a abonar o sumar para ${customer.customer_name}`}
                         value={adjustAmount}
                         onChange={(e) => setAdjustAmount(e.target.value)}
                         className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"

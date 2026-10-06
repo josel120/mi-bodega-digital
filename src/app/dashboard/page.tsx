@@ -749,6 +749,7 @@ export default function DashboardPage() {
                   inputMode="decimal"
                   required
                   placeholder="0.00"
+                  aria-label="Monto en soles"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 text-base font-bold text-slate-800 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -761,6 +762,7 @@ export default function DashboardPage() {
               <input
                 type="text"
                 placeholder="Descripción (ej. Gaseosa, Pan, Pago proveedor)"
+                aria-label="Descripción (opcional)"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-4 py-2 text-xs border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
