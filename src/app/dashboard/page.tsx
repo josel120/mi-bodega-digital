@@ -41,7 +41,7 @@ import {
 import ErrorToast from "@/components/ErrorToast";
 import EstadoConexion from "@/components/EstadoConexion";
 import { parseAmount } from "@/lib/money";
-import { diaLocal } from "@/lib/fechas";
+import { diaLocal, esDiaFuturo } from "@/lib/fechas";
 import {
   anotar,
   armarPendiente,
@@ -307,6 +307,11 @@ export default function DashboardPage() {
     const numAmount = parseAmount(amount);
     if (numAmount === null) {
       setErrorMsg("Escribe un monto mayor a cero, por ejemplo 12.50");
+      return;
+    }
+
+    if (esDiaFuturo(selectedDate)) {
+      setErrorMsg("Ese día todavía no llega. Vuelve a Hoy para anotar.");
       return;
     }
 
@@ -608,9 +613,15 @@ export default function DashboardPage() {
               </span>
               <input
                 type="date"
+                aria-label="Elegir día"
                 value={selectedDate}
+                max={diaLocal()}
                 onChange={(e) => {
-                  if (e.target.value) setSelectedDate(e.target.value);
+                  // `max` no alcanza: algunos teclados y navegadores viejos
+                  // dejan escribir la fecha igual.
+                  if (e.target.value && !esDiaFuturo(e.target.value)) {
+                    setSelectedDate(e.target.value);
+                  }
                 }}
                 className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               />
