@@ -72,6 +72,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
       "Para cobrarte el plan y emitir tu boleta o factura, si decides pagar.",
       "Para avisarte cosas de tu cuenta: recuperar tu clave, confirmar un pago o recordarte que tu plan vence. Estos avisos son parte del servicio.",
       "Para atender tus reclamos, consultas y pedidos sobre tus datos.",
+      "Si usas el Libro de Reclamaciones, guardamos lo que escribes en la hoja (nombre, documento, contacto y detalle) solo para responderte y por el tiempo que exige la norma de Indecopi.",
       "No te enviaremos publicidad sin tu permiso aparte. Si algún día te pedimos ese permiso, podrás decir que no y seguirás usando la app igual.",
     ],
   },
@@ -123,7 +124,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Borrar tu cuenta",
     parrafos: [
-      "Puedes borrar tu cuenta tú misma desde la app: Menú → «Borrar mi cuenta». Te pediremos confirmar, porque no se puede deshacer.",
+      "Puedes borrar tu cuenta tú misma desde la app: pestaña «Cuenta» → «Borrar mi cuenta». Te pediremos confirmar, porque no se puede deshacer.",
       "Antes de borrar, revisa que no tengas anotaciones sin subir. Al borrar se elimina todo lo que anotaste, también los fiados de tus clientes.",
       "Si tenías un plan pagado vigente, borrar la cuenta no da derecho a devolución por sí solo; revisa nuestra Política de devoluciones.",
     ],

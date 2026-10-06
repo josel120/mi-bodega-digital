@@ -58,7 +58,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Qué pasa después",
     parrafos: [
-      "Al enviar tu hoja verás una constancia con su número y fecha. Puedes imprimirla y además te llega una copia a tu correo. Guárdala.",
+      "Al enviar tu hoja verás una constancia con su número y fecha. Puedes imprimirla o guardarla con una captura de pantalla. Guárdala.",
       "Te respondemos por escrito en un plazo máximo de 15 días hábiles, al correo o a la dirección que nos indiques.",
       "Presentar un reclamo no te impide acudir a otras vías de solución ni es requisito previo para presentar una denuncia ante Indecopi.",
     ],
