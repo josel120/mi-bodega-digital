@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, CreditCard } from "lucide-react";
+import { LayoutDashboard, Users, CreditCard, UserCog } from "lucide-react";
 import { MOSTRAR_PLANES } from "@/lib/features";
 
 export default function BottomNav() {
@@ -11,7 +11,16 @@ export default function BottomNav() {
 
   // Si estamos en la pantalla de Login, no mostramos la barra de navegación
   // Login y recuperación de clave no llevan barra: todavía no hay sesión.
-  const sinNav = ["/login", "/reset-password"];
+  // Las páginas legales son públicas: quien llega sin cuenta no tiene adónde
+  // ir con esta barra (tienen su propio enlace de vuelta).
+  const sinNav = [
+    "/login",
+    "/reset-password",
+    "/privacidad",
+    "/terminos",
+    "/devoluciones",
+    "/reclamaciones",
+  ];
   if (sinNav.some((r) => pathname === r || pathname === `${r}/`)) return null;
 
   const navItems = [
@@ -34,6 +43,11 @@ export default function BottomNav() {
           },
         ]
       : []),
+    {
+      label: "Cuenta",
+      href: "/cuenta",
+      icon: UserCog,
+    },
   ];
 
   return (

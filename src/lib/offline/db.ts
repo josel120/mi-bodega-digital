@@ -172,4 +172,31 @@ export async function vaciarAlmacen(): Promise<void> {
   }
 }
 
+/**
+ * Cierra y elimina la base del teléfono. Se usa después de vaciarla, al cerrar
+ * sesión o borrar la cuenta: así no queda ni la estructura con el nombre de la
+ * app. Si otra pestaña la tiene abierta, el navegador la borra cuando se
+ * cierre; no esperamos por eso porque los datos ya se vaciaron.
+ */
+export async function eliminarBd(): Promise<void> {
+  const bd = promesaBd ? await promesaBd : null;
+  promesaBd = null;
+  try {
+    if (bd && typeof bd.close === "function") bd.close();
+  } catch {
+    // Ya estaba cerrada.
+  }
+  if (typeof indexedDB === "undefined" || typeof indexedDB.deleteDatabase !== "function") return;
+  await new Promise<void>((resolver) => {
+    try {
+      const solicitud = indexedDB.deleteDatabase(NOMBRE_BD);
+      solicitud.onsuccess = () => resolver();
+      solicitud.onerror = () => resolver();
+      solicitud.onblocked = () => resolver();
+    } catch {
+      resolver();
+    }
+  });
+}
+
 export { esperar };
