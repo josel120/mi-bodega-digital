@@ -12,6 +12,17 @@ export function diaLocal(d: Date = new Date()): string {
   return `${anio}-${mes}-${dia}`;
 }
 
+/**
+ * ¿Ese día todavía no llegó? Los "AAAA-MM-DD" se comparan como texto.
+ *
+ * Las flechas no dejan pasar de hoy, pero el calendario nativo sí dejaba
+ * elegir mañana o el mes que viene, y la venta quedaba anotada en un día que
+ * no existe todavía: no salía en la caja de hoy y aparecía días después.
+ */
+export function esDiaFuturo(dia: string, hoy: string = diaLocal()): boolean {
+  return dia > hoy;
+}
+
 /** Mismo cálculo, partiendo del `created_at` que guarda Supabase (ISO en UTC). */
 export function diaLocalDeISO(iso: string): string {
   const fecha = new Date(iso);

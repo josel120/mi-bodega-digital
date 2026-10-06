@@ -81,6 +81,34 @@ async function encolar(nuevo: PendienteNuevo): Promise<number | null> {
   return seq;
 }
 
+async function leerPendiente(seq: number): Promise<Pendiente | null> {
+  const fila = await conTienda<Pendiente | undefined>(
+    TIENDA_PENDIENTES,
+    "readonly",
+    (tienda) => esperar(tienda.get(seq) as IDBRequest<Pendiente | undefined>),
+  );
+  return fila ?? null;
+}
+
+/**
+ * La anotación que está viajando al servidor en este momento.
+ *
+ * Corregir o borrar una venta que todavía no subió se hace en la cola, sin
+ * mandar nada. Pero si esa venta ya salió (el INSERT va por el aire), tocar la
+ * cola llega tarde: el servidor la va a guardar tal como salió. Antes pasaba
+ * esto con señal lenta: la bodeguera anotaba S/ 50, se daba cuenta al toque,
+ * la borraba; la app la sacaba de la cola, el INSERT llegaba igual y la venta
+ * borrada reaparecía en la caja (o la corrección se perdía). Si la anotación
+ * está en vuelo, editar y borrar contestan "no era pendiente" y la pantalla
+ * manda la corrección como un cambio aparte, que sube DESPUÉS de la venta.
+ */
+let enVuelo: number | null = null;
+
+function estaEnVuelo(pendiente: Pendiente): boolean {
+  // Una trabada no viaja: la pasada la salta, así que se puede corregir acá.
+  return pendiente.seq === enVuelo && !pendiente.trabado;
+}
+
 async function sacarDeCola(seq: number): Promise<void> {
   await conTienda(TIENDA_PENDIENTES, "readwrite", async (tienda) => {
     await esperar(tienda.delete(seq));
@@ -155,6 +183,7 @@ export async function editarMovimientoEnCola(
     (p) => p.op.tipo === "crear_movimiento" && p.op.fila.id === idMovimiento,
   );
   if (!pendiente || pendiente.op.tipo !== "crear_movimiento") return false;
+  if (estaEnVuelo(pendiente)) return false;
 
   pendiente.op = {
     tipo: "crear_movimiento",
@@ -178,6 +207,7 @@ export async function borrarMovimientoDeCola(
     (p) => p.op.tipo === "crear_movimiento" && p.op.fila.id === idMovimiento,
   );
   if (!pendiente) return false;
+  if (estaEnVuelo(pendiente)) return false;
 
   await sacarDeCola(pendiente.seq);
   avisar();
@@ -714,7 +744,15 @@ async function correrSubida(
     // puede subir: editar un movimiento que nunca se creó no tiene sentido.
     const trabadas = new Set<string>();
 
-    for (const pendiente of cola) {
+    for (const { seq } of cola) {
+      // Se marca en vuelo ANTES de releerla: una corrección que entre después
+      // de la marca va como cambio aparte; una que entró antes ya está en la
+      // copia fresca. Releer también evita subir algo que borraron mientras
+      // esperaba su turno.
+      enVuelo = seq;
+      const pendiente = await leerPendiente(seq);
+      if (!pendiente) continue;
+
       const fila = filaTocada(pendiente.op);
 
       if (pendiente.trabado) {
@@ -770,6 +808,7 @@ async function correrSubida(
       sesionCaida,
     };
   } finally {
+    enVuelo = null;
     subidasTotales += subidos;
     avisar();
   }
