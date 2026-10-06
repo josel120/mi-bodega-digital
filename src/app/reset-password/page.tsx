@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Loader2, ArrowRight, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { traducirErrorAuth } from "@/lib/auth-errores";
 
 /**
  * Pantalla a la que llega el enlace del correo de "Olvidé mi contraseña".
@@ -43,7 +44,7 @@ export default function ResetPasswordPage() {
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(traducirErrorAuth(error));
       setSaving(false);
       return;
     }

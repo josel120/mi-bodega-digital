@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Store, Mail, Lock, Phone, ArrowRight, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { BASE_PATH } from "@/lib/base-path";
+import { traducirErrorAuth } from "@/lib/auth-errores";
 import { ENLACES_LEGALES } from "@/components/PaginaLegal";
 
 export default function LoginPage() {
@@ -27,18 +28,45 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setErrorMsg(null);
+    setInfoMsg(null);
 
     try {
       if (isRegistering) {
-        // 1. Registro de usuario en Supabase Auth
+        // 1. Registro de usuario en Supabase Auth. El enlace del correo de
+        // confirmación tiene que volver con el prefijo de GitHub Pages; sin
+        // él, Supabase manda a la raíz del dominio y el enlace da 404.
         const { data: authData, error: authError } = await supabase.auth.signUp(
           {
             email,
             password,
+            options: {
+              emailRedirectTo: `${window.location.origin}${BASE_PATH}/dashboard/`,
+            },
           },
         );
 
         if (authError) throw authError;
+
+        // Con la confirmación de correo activa, Supabase no devuelve error si
+        // el correo ya existe (para no revelar quién tiene cuenta): devuelve
+        // un usuario sin identidades. Sin este chequeo le diríamos "revisa tu
+        // correo" y nunca le llegaría nada.
+        if (authData.user && authData.user.identities?.length === 0) {
+          setErrorMsg(traducirErrorAuth({ code: "user_already_exists" }));
+          return;
+        }
+
+        // Sin sesión = Supabase pide confirmar el correo antes de entrar. Si
+        // la mandáramos al dashboard rebotaría a /login sin saber por qué, y
+        // el INSERT de la bodega fallaría por RLS. Le avisamos y se queda
+        // aquí; al confirmar, el enlace la lleva al dashboard y
+        // MerchantOnboarding le pide el nombre de la bodega.
+        if (!authData.session) {
+          setInfoMsg(
+            `Te mandamos un correo para confirmar tu cuenta a ${email}. Ábrelo y toca el enlace para entrar a tu bodega. Si no lo ves en unos minutos, revisa la carpeta de spam.`,
+          );
+          return;
+        }
 
         if (authData.user) {
           // 2. Creación automática del registro en la tabla 'merchants' con 7 días de Trial
@@ -75,11 +103,9 @@ export default function LoginPage() {
         router.push("/dashboard");
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error inesperado al autenticar.";
-      setErrorMsg(message);
+      // El formulario no se vacía: que pueda corregir y reintentar sin
+      // volver a escribir todo.
+      setErrorMsg(traducirErrorAuth(err));
     } finally {
       setLoading(false);
     }
@@ -102,7 +128,7 @@ export default function LoginPage() {
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      setErrorMsg(traducirErrorAuth(error));
     } else {
       setInfoMsg(
         "Te enviamos un correo con el enlace para crear una contraseña nueva. Revisa también la carpeta de spam.",
@@ -135,6 +161,7 @@ export default function LoginPage() {
             onClick={() => {
               setIsRegistering(false);
               setErrorMsg(null);
+              setInfoMsg(null);
             }}
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${
               !isRegistering
@@ -149,6 +176,7 @@ export default function LoginPage() {
             onClick={() => {
               setIsRegistering(true);
               setErrorMsg(null);
+              setInfoMsg(null);
             }}
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${
               isRegistering
