@@ -72,14 +72,19 @@ bloqueados para revisión; no conceder doble acceso ni refund automático.
 Webhook que no puede guardar devuelve 503 para reintento del proveedor. Conciliar
 notificaciones agotadas por pago consultado al proveedor y mismo RPC; no activar
 desde una captura o parámetro de URL. Refund parcial suspende ese pedido para
-revisión, de forma conservadora. Histórico de pedidos no se borra en cascada
-al borrar bodega: resolver retención y cancelación de cuenta antes de lanzamiento.
+revisión, de forma conservadora. Al borrar la cuenta (`borrar-cuenta` +
+`03-legal-y-cuenta.sql`) los pedidos se conservan para SUNAT sin dueño
+(`merchant_id` nulo); un pago que llegue después queda como pedido huérfano para
+devolverlo a mano. Desde 03 la vigencia se recalcula entera desde los pedidos
+pagados: no edites `subscription_ends_at` a mano, usa `aplicar_pago_membresia`.
 
 ## Pruebas
 
 `npm test` ejecuta handlers y adaptador REST con proveedores falsos, sin red.
-CI además ejecuta `test/payment-schema.sql` en Postgres descartable: restricciones,
-permisos, reserva, idempotencia, renovación y devolución. No correr ese fixture
+CI además ejecuta `test/payment-schema.sql` (02 + 03) y `test/cuenta-schema.sql`
+(01 → 02 → 03 → 03) en Postgres descartable: restricciones, permisos, reserva,
+idempotencia, renovación, devolución, borrado de cuenta y reclamos. Guion del
+sandbox: [sandbox-mercadopago.md](sandbox-mercadopago.md). No correr ese fixture
 en una base real. `npx tsc --noEmit`, `npm run lint` y `npm run build` verifican app.
 
 Fuentes consultadas 2026-10-02:
