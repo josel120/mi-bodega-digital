@@ -46,7 +46,7 @@ begin
     if tg_op = 'INSERT' then
       new.user_id := auth.uid();
       new.subscription_status := 'trial';
-      new.trial_ends_at := now() + interval '7 days';
+      new.trial_ends_at := now() + interval '14 days';
       new.subscription_ends_at := null;
       new.created_at := now();
     else

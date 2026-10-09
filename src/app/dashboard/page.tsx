@@ -553,7 +553,7 @@ export default function DashboardPage() {
         <div className="flex items-center gap-2">
           <Link
             href="/cuenta"
-            className="p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
             title="Mi cuenta"
             aria-label="Mi cuenta"
           >
@@ -561,7 +561,7 @@ export default function DashboardPage() {
           </Link>
           <button
             onClick={handleLogout}
-            className="p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center p-2 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
             title="Cerrar Sesión"
             aria-label="Cerrar sesión"
           >
@@ -588,7 +588,7 @@ export default function DashboardPage() {
         <div className="bg-white rounded-2xl p-3 shadow-sm border border-slate-200/60 flex items-center justify-between gap-2">
           <button
             onClick={() => handleShiftDate(-1)}
-            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors"
             title="Día anterior"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -598,7 +598,7 @@ export default function DashboardPage() {
             {/* Botón rápido Hoy */}
             <button
               onClick={() => setSelectedDate(diaLocal())}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+              className={`min-h-11 px-3 text-xs font-bold rounded-lg transition-all ${
                 isToday
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -610,7 +610,7 @@ export default function DashboardPage() {
             {/* Botón rápido Ayer */}
             <button
               onClick={() => setSelectedDate(yesterdayStr)}
-              className={`px-2.5 py-1 text-xs font-bold rounded-lg transition-all ${
+              className={`min-h-11 px-3 text-xs font-bold rounded-lg transition-all ${
                 selectedDate === yesterdayStr
                   ? "bg-emerald-600 text-white shadow-xs"
                   : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -645,7 +645,7 @@ export default function DashboardPage() {
           <button
             onClick={() => handleShiftDate(1)}
             disabled={isToday}
-            className="p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
+            className="min-h-11 min-w-11 inline-flex items-center justify-center p-2 hover:bg-slate-100 rounded-xl text-slate-600 transition-colors disabled:opacity-30 disabled:hover:bg-transparent"
             title="Día siguiente"
           >
             <ChevronRight className="w-5 h-5" />
@@ -719,7 +719,7 @@ export default function DashboardPage() {
               Registrar Movimiento
             </h2>
             {!isToday && (
-              <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
+              <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg">
                 Registrando en: {formatDateLabel(selectedDate)}
               </span>
             )}
@@ -731,7 +731,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setType("income")}
-                className={`py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
+                className={`min-h-11 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
                   type === "income"
                     ? "bg-emerald-600 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
@@ -742,7 +742,7 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={() => setType("expense")}
-                className={`py-2 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
+                className={`min-h-11 text-xs font-bold rounded-lg flex items-center justify-center gap-1 transition-all ${
                   type === "expense"
                     ? "bg-rose-600 text-white shadow-sm"
                     : "text-slate-500 hover:text-slate-700"
@@ -791,7 +791,7 @@ export default function DashboardPage() {
                     key={method}
                     type="button"
                     onClick={() => setPaymentMethod(method)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    className={`px-3 min-h-11 rounded-xl text-xs font-bold border transition-all ${
                       paymentMethod === method
                         ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
                         : "bg-slate-100 text-slate-600 border-slate-200"
@@ -827,7 +827,7 @@ export default function DashboardPage() {
             <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
               Movimientos ({transactions.length})
             </h2>
-            <span className="text-[11px] text-slate-400 font-medium">
+            <span className="text-xs text-slate-400 font-medium">
               {formatDateLabel(selectedDate)}
             </span>
           </div>
@@ -875,7 +875,7 @@ export default function DashboardPage() {
                         {tx.description ||
                           (isIncome(tx) ? "Venta rápida" : "Gasto rápido")}
                       </p>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                      <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                         <span>
                           {new Date(tx.created_at).toLocaleTimeString([], {
                             hour: "2-digit",
@@ -890,7 +890,7 @@ export default function DashboardPage() {
                             entre plata que está en el servidor y plata que no. */}
                         {tx.pendiente && (
                           <span
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[11px] font-bold text-white ${
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-xs font-bold text-white ${
                               tx.trabado ? "bg-rose-700" : "bg-amber-600"
                             }`}
                           >
@@ -919,7 +919,7 @@ export default function DashboardPage() {
                     {/* Botón Editar */}
                     <button
                       onClick={() => handleStartEdit(tx)}
-                      className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                      className="min-h-11 min-w-11 inline-flex items-center justify-center p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                       title="Editar movimiento"
                     >
                       <Pencil className="w-3.5 h-3.5" />
@@ -928,7 +928,7 @@ export default function DashboardPage() {
                     {/* Botón Eliminar */}
                     <button
                       onClick={() => setDeletingTx(tx)}
-                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
+                      className="min-h-11 min-w-11 inline-flex items-center justify-center p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
                       title="Eliminar movimiento"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -951,10 +951,10 @@ export default function DashboardPage() {
             </div>
 
             {/* Toggle de Pestañas para la gráfica */}
-            <div className="flex bg-slate-100 p-0.5 rounded-lg text-[10px] font-bold">
+            <div className="flex bg-slate-100 p-0.5 rounded-lg text-xs font-bold">
               <button
                 onClick={() => setChartType("income")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
+                className={`min-h-11 px-3 rounded-md transition-all ${
                   chartType === "income"
                     ? "bg-white text-emerald-600 shadow-xs"
                     : "text-slate-400"
@@ -964,7 +964,7 @@ export default function DashboardPage() {
               </button>
               <button
                 onClick={() => setChartType("expense")}
-                className={`px-2.5 py-1 rounded-md transition-all ${
+                className={`min-h-11 px-3 rounded-md transition-all ${
                   chartType === "expense"
                     ? "bg-white text-rose-600 shadow-xs"
                     : "text-slate-400"
@@ -1004,7 +1004,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setEditType("income")}
-                  className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  className={`min-h-11 text-xs font-bold rounded-lg transition-all ${
                     editType === "income"
                       ? "bg-emerald-600 text-white shadow-sm"
                       : "text-slate-500"
@@ -1015,7 +1015,7 @@ export default function DashboardPage() {
                 <button
                   type="button"
                   onClick={() => setEditType("expense")}
-                  className={`py-1.5 text-xs font-bold rounded-lg transition-all ${
+                  className={`min-h-11 text-xs font-bold rounded-lg transition-all ${
                     editType === "expense"
                       ? "bg-rose-600 text-white shadow-sm"
                       : "text-slate-500"
@@ -1029,7 +1029,7 @@ export default function DashboardPage() {
                   type="number" el navegador descarta "12,50" y el campo llega
                   vacío. Ver src/lib/money.ts. */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
                   Monto ({merchant?.currency})
                 </label>
                 <input
@@ -1044,7 +1044,7 @@ export default function DashboardPage() {
 
               {/* Descripción */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
                   Descripción
                 </label>
                 <input
@@ -1058,7 +1058,7 @@ export default function DashboardPage() {
 
               {/* Método de Pago */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                <label className="block text-xs font-semibold text-slate-500 mb-1">
                   Método de Pago
                 </label>
                 <div className="flex gap-1.5 overflow-x-auto py-1">
