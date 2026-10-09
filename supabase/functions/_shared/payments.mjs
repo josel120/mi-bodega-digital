@@ -3,6 +3,9 @@
 export const PLANS = Object.freeze({
   monthly: Object.freeze({ amount: 29, title: "Mi Bodega Digital · 1 mes" }),
   yearly: Object.freeze({ amount: 279, title: "Mi Bodega Digital · 12 meses" }),
+  // Fundador: S/ 19, 1 mes prepagado, tope de 30 bodegas. El tope y la retención del cupo
+  // viven en la base (supabase/05-plan-fundador.sql); aquí solo el precio que se cobra.
+  founder: Object.freeze({ amount: 19, title: "Mi Bodega Digital · 1 mes (Fundador)" }),
 });
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const reply = (status, body, headers = {}) => Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
@@ -48,6 +51,8 @@ export function createCheckoutHandler(deps) {
       try { body = await request.json(); } catch { return reply(400, { error: "Pedido inválido." }, cors); }
       if (!body || !Object.hasOwn(PLANS, body.planType) || !UUID.test(body.requestId ?? "")) return reply(400, { error: "Plan o pedido inválido." }, cors);
       const reservation = await deps.reserve(user.id, body.planType, body.requestId);
+      // Sin cupo fundador la base no crea pedido: se avisa claro, sin crear checkout.
+      if (reservation.sold_out) return reply(409, { error: "Ya no quedan cupos del Plan Fundador.", code: "founder_sold_out" }, cors);
       const order = reservation.order;
       if (!order || order.plan_type !== body.planType) return reply(409, { error: "No pudimos preparar este pedido." }, cors);
       if (order.status === "paid") return reply(409, { error: "Este pedido ya está pagado. Revisa tu plan." }, cors);
