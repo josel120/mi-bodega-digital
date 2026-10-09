@@ -39,6 +39,7 @@ import {
   leerBodegaGuardada,
   guardarBodega,
 } from "@/lib/merchant";
+import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import ErrorToast from "@/components/ErrorToast";
 import EstadoConexion from "@/components/EstadoConexion";
 import { parseAmount } from "@/lib/money";
@@ -977,6 +978,8 @@ export default function DashboardPage() {
           {/* Gráfica Recharts */}
           <PaymentMethodsChart transactions={chartTransactions} />
         </div>
+
+        <AvisoLibroReclamaciones className="pt-2" />
       </main>
 
       {/* MODAL DE EDICIÓN */}
