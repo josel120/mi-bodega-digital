@@ -13,12 +13,18 @@
 --  meses fundador a S/ 19 aunque los 30 cupos ya estén tomados. Mensual (29) y
 --  anual (279) no cambian.
 --
---  PENDIENTE DEL DUEÑO (no se aplica ninguna fecha en este guion):
---    · D2: cuánto dura el precio fundador (¿para siempre, 6 meses, 12?). Hoy una
---      bodega fundadora puede renovar a S/ 19 sin límite de tiempo.
---    · D3: fecha límite para tomar los 30 cupos. Hoy no hay fecha: el único
---      límite es el cupo. Cuando se decidan, se agregan en `cupo_fundador()` /
---      `fundadores_ocupados()` y se ajusta la prueba.
+--  DECIDIDO POR EL DUEÑO el 2026-10-09:
+--    · D2: el precio fundador dura 6 meses por bodega. Cada bodega puede comprar
+--      como máximo 6 meses fundador en total: cuentan sus pedidos founder
+--      `paid` (una devolución o contracargo no cuenta) y los en curso que no han
+--      vencido (así no compra de más en paralelo). Al llegar a 6, la reserva
+--      devuelve `founder_ended` y la pantalla ofrece mensual o anual.
+--    · D3: los cupos nuevos se pueden tomar hasta el 2026-12-31 inclusive, hora
+--      de Lima (el cierre es 2027-01-01 00:00 en Lima, UTC-5 todo el año). Después,
+--      una bodega SIN pedido founder pagado recibe `founder_closed`. Las bodegas
+--      que ya son fundadoras siguen renovando hasta usar sus 6 meses.
+--    Los tres valores (30, 6 y la fecha) viven juntos en `cupo_fundador()`,
+--    `meses_fundador()` y `cierre_fundador()`.
 --
 --  Qué cambia:
 --    1. `plan_type` acepta 'founder' y el precio se valida en la base:
@@ -58,13 +64,13 @@
 --
 --  PASOS DEL DUEÑO (nada de esto se ejecutó desde el repositorio):
 --    1. Pegar este archivo en Supabase → SQL Editor y ejecutarlo. Debe terminar
---       sin error; la comprobación del final lista las 4 funciones y la
+--       sin error; la comprobación del final lista las funciones y la
 --       restricción de precio.
 --    2. Desplegar las Edge Functions con el plan nuevo (no hay secretos nuevos):
 --         supabase functions deploy crear-preferencia
 --         supabase functions deploy webhook-mercadopago
---    3. Decidir D2 y D3 (arriba). Los planes siguen ocultos tras
---       MOSTRAR_PLANES=false hasta que lo enciendas tú.
+--    3. Los planes siguen ocultos tras MOSTRAR_PLANES=false hasta que lo
+--       enciendas tú.
 -- ============================================================================
 begin;
 
@@ -105,14 +111,67 @@ alter table public.membership_orders
 -- 2. Tope y conteo de cupos fundador
 -- ----------------------------------------------------------------------------
 
--- El tope de bodegas fundadoras vive SOLO aquí. D2 (duración del precio) y D3
--- (fecha límite) siguen sin decidir: no se aplica ninguna fecha.
+-- Las tres reglas del plan fundador viven SOLO aquí: tope de bodegas, meses por
+-- bodega (D2) y cierre de cupos nuevos (D3).
 create or replace function public.cupo_fundador()
 returns int
 language sql
 immutable
 set search_path = public, pg_temp
 as $$ select 30 $$;
+
+create or replace function public.meses_fundador()
+returns int
+language sql
+immutable
+set search_path = public, pg_temp
+as $$ select 6 $$;
+
+-- Primer instante en que ya no se aceptan bodegas fundadoras nuevas:
+-- 2027-01-01 00:00 en Lima = fin del 2026-12-31 (Lima es UTC-5 sin horario de verano).
+create or replace function public.cierre_fundador()
+returns timestamptz
+language sql
+immutable
+set search_path = public, pg_temp
+as $$ select timestamptz '2027-01-01 00:00:00-05' $$;
+
+-- Meses fundador de una bodega que ya no se pueden volver a comprar: pedidos
+-- pagados más los en curso sin vencer (devueltos y contracargos no cuentan).
+create or replace function public.meses_fundador_usados(p_merchant uuid, p_ahora timestamptz default now())
+returns int
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select count(*)::int from public.membership_orders
+   where merchant_id = p_merchant and plan_type = 'founder'
+     and (status = 'paid' or (status in ('creating', 'pending') and expires_at > p_ahora));
+$$;
+
+-- Única decisión de "¿puede esta bodega comprar fundador?": la usan la reserva y
+-- la pantalla. `p_ahora` existe para probar fechas sin mover el reloj; la reserva
+-- siempre manda now(). Resultados: ok | sold_out | closed | ended.
+create or replace function public.decidir_fundador(p_merchant uuid, p_ahora timestamptz default now())
+returns text
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if p_merchant is not null and exists (select 1 from public.membership_orders
+       where merchant_id = p_merchant and plan_type = 'founder' and status = 'paid') then
+    -- Ya es fundadora: no le aplica ni el cupo ni la fecha, solo sus 6 meses.
+    if public.meses_fundador_usados(p_merchant, p_ahora) >= public.meses_fundador() then return 'ended'; end if;
+    return 'ok';
+  end if;
+  if p_ahora >= public.cierre_fundador() then return 'closed'; end if;
+  if public.fundadores_ocupados(p_merchant) >= public.cupo_fundador() then return 'sold_out'; end if;
+  return 'ok';
+end;
+$$;
 
 -- Bodegas que hoy ocupan un cupo, sin contar a `p_excluir` (la bodega que
 -- consulta: su propio pedido en curso no le quita el cupo a sí misma).
@@ -144,20 +203,28 @@ declare
   v_propio boolean := false;
   v_cupo int := public.cupo_fundador();
   v_ocupados int;
+  v_usados int := 0;
+  v_razon text;
 begin
   select id into v_merchant from public.merchants where user_id = auth.uid() order by created_at limit 1;
   if v_merchant is not null then
     v_propio := exists (select 1 from public.membership_orders
                          where merchant_id = v_merchant and plan_type = 'founder' and status = 'paid');
+    v_usados := public.meses_fundador_usados(v_merchant);
   end if;
   v_ocupados := public.fundadores_ocupados(null);
+  v_razon := public.decidir_fundador(v_merchant);
   return jsonb_build_object(
     'cap', v_cupo,
     'taken', v_ocupados,
     'remaining', greatest(v_cupo - v_ocupados, 0),
     'is_founder', v_propio,
-    -- Quien ya es fundador siempre puede seguir comprando a S/ 19.
-    'can_buy', v_propio or public.fundadores_ocupados(v_merchant) < v_cupo
+    'months_total', public.meses_fundador(),
+    'months_left', greatest(public.meses_fundador() - v_usados, 0),
+    'deadline', public.cierre_fundador(),
+    -- ok | sold_out | closed | ended
+    'reason', v_razon,
+    'can_buy', v_razon = 'ok'
   );
 end;
 $$;
@@ -221,6 +288,7 @@ declare
   v_created boolean;
   v_monto numeric;
   v_vence interval := interval '24 hours';
+  v_decision text;
 begin
   if p_plan is null or p_plan not in ('monthly', 'yearly', 'founder') then raise exception 'Plan inválido'; end if;
   -- Serializar reservas de una bodega: dos pestañas no crean dos checkouts.
@@ -246,11 +314,10 @@ begin
     -- Un solo turno a la vez para el cupo (se suelta al terminar la transacción).
     -- Orden fijo: primero bodega, luego este candado; nadie hace lo contrario.
     perform pg_advisory_xact_lock(hashtext('mbd-cupo-fundador'));
-    if not exists (select 1 from public.membership_orders
-                    where merchant_id = v_merchant and plan_type = 'founder' and status = 'paid')
-       and public.fundadores_ocupados(v_merchant) >= public.cupo_fundador() then
-      return jsonb_build_object('created', false, 'sold_out', true);
-    end if;
+    v_decision := public.decidir_fundador(v_merchant, now());
+    if v_decision = 'sold_out' then return jsonb_build_object('created', false, 'sold_out', true); end if;
+    if v_decision = 'closed' then return jsonb_build_object('created', false, 'founder_closed', true); end if;
+    if v_decision = 'ended' then return jsonb_build_object('created', false, 'founder_ended', true); end if;
     -- Retención corta: el cupo se guarda 30 minutos mientras la persona paga.
     v_vence := interval '30 minutes';
   end if;
@@ -274,6 +341,14 @@ revoke all on function public.reservar_membresia(uuid,text,uuid) from public, an
 grant execute on function public.reservar_membresia(uuid,text,uuid) to service_role;
 revoke all on function public.cupo_fundador() from public, anon, authenticated;
 grant execute on function public.cupo_fundador() to service_role;
+revoke all on function public.meses_fundador() from public, anon, authenticated;
+grant execute on function public.meses_fundador() to service_role;
+revoke all on function public.cierre_fundador() from public, anon, authenticated;
+grant execute on function public.cierre_fundador() to service_role;
+revoke all on function public.meses_fundador_usados(uuid,timestamptz) from public, anon, authenticated;
+grant execute on function public.meses_fundador_usados(uuid,timestamptz) to service_role;
+revoke all on function public.decidir_fundador(uuid,timestamptz) from public, anon, authenticated;
+grant execute on function public.decidir_fundador(uuid,timestamptz) to service_role;
 revoke all on function public.fundadores_ocupados(uuid) from public, anon, authenticated;
 grant execute on function public.fundadores_ocupados(uuid) to service_role;
 revoke all on function public.estado_fundador() from public, anon;
@@ -284,14 +359,16 @@ commit;
 
 -- ----------------------------------------------------------------------------
 -- Comprobación (solo lectura). Debe devolver:
---    · 5 funciones (cupo_fundador, estado_fundador, fundadores_ocupados,
+--    · 9 funciones (cupo/meses/cierre_fundador, meses_fundador_usados,
+--      decidir_fundador, estado_fundador, fundadores_ocupados,
 --      recalcular_vigencia, reservar_membresia)
 --    · 2 restricciones: plan_type_check con 'founder' y precio con 19
 -- ----------------------------------------------------------------------------
 select p.proname, p.prosecdef
 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
 where n.nspname = 'public'
-  and p.proname in ('cupo_fundador', 'estado_fundador', 'fundadores_ocupados',
+  and p.proname in ('cupo_fundador', 'meses_fundador', 'cierre_fundador', 'meses_fundador_usados',
+                    'decidir_fundador', 'estado_fundador', 'fundadores_ocupados',
                     'recalcular_vigencia', 'reservar_membresia')
 order by p.proname;
 
