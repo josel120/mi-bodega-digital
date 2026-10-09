@@ -133,3 +133,13 @@ export function mensajeErrorReclamo(error: { message?: string } | null): string 
   }
   return "No se pudo registrar tu reclamo. Revisa tu señal y vuelve a enviar: lo que escribiste sigue en el formulario.";
 }
+
+/**
+ * ¿Falló el envío por la red o el servidor (y no por un dato mal puesto)?
+ * Solo en ese caso se ofrece el canal alternativo: si es un dato, la persona
+ * lo corrige y vuelve a enviar.
+ */
+export function fallaDeEnvio(error: { message?: string } | null): boolean {
+  const texto = error?.message ?? "";
+  return !(texto.includes("RECLAMO_FALTA_CAMPO") || texto.includes("RECLAMO_INVALIDO"));
+}

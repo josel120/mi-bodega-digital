@@ -38,6 +38,20 @@
 
 export const TITULO = "Libro de Reclamaciones";
 
+/** Correo de contacto del proveedor. Dato pendiente que decide el dueño. */
+export const CORREO_CONTACTO = "[CORREO DE CONTACTO]";
+
+/** Libro virtual gratuito de Indecopi: canal alternativo si nuestra hoja no se envía. */
+export const URL_TU_LIBRO = "https://consumidor.indecopi.gob.pe/tulibro/";
+
+/**
+ * Aviso del Libro de Reclamaciones que se muestra en inicio, planes y pie de las
+ * páginas legales. El texto oficial lo verifica legal-counsel (Anexo del DS 101-2022-PCM):
+ * NO inventar redacción legal acá; reemplazar solo este placeholder por el texto oficial.
+ */
+export const AVISO_LIBRO =
+  "[TEXTO OFICIAL PENDIENTE — copiar del Anexo del DS 101-2022-PCM]";
+
 export const ACTUALIZADO = "2026-10-06";
 
 export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
@@ -45,7 +59,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
     titulo: "Libro de Reclamaciones virtual",
     parrafos: [
       "Conforme al Código de Protección y Defensa del Consumidor, contamos con un Libro de Reclamaciones virtual a tu disposición.",
-      "Proveedor: [RAZÓN SOCIAL] · RUC [RUC] · Domicilio: [DOMICILIO] · Correo: [CORREO DE CONTACTO].",
+      `Proveedor: [RAZÓN SOCIAL] · RUC [RUC] · Domicilio: [DOMICILIO] · Correo: ${CORREO_CONTACTO}.`,
     ],
   },
   {
@@ -66,7 +80,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Antes de llenar",
     parrafos: [
-      "Si es un problema de pago o de acceso, también puedes escribirnos a [CORREO DE CONTACTO]; muchas veces se resuelve rápido. Igual puedes usar este libro cuando quieras.",
+      `Si es un problema de pago o de acceso, también puedes escribirnos a ${CORREO_CONTACTO}; muchas veces se resuelve rápido. Igual puedes usar este libro cuando quieras.`,
       "Usamos los datos de esta hoja solo para atender tu reclamo o queja, como manda la ley, y los conservamos el tiempo que exige la norma. Más detalle en nuestro Aviso de privacidad.",
     ],
   },

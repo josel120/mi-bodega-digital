@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import { Store } from "lucide-react";
 
 export interface DocumentoLegal {
@@ -106,6 +107,8 @@ export default function PaginaLegal({
             ))}
           </ul>
         </nav>
+
+        <AvisoLibroReclamaciones className="mt-6" />
       </main>
     </div>
   );

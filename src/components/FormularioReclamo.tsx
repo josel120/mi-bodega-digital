@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { Loader2, Printer, CheckCircle2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import CanalAlternativoReclamo from "@/components/CanalAlternativoReclamo";
 import ErrorToast from "@/components/ErrorToast";
 import { diaLocal } from "@/lib/fechas";
 import {
   campoObligatorio,
   campoVisible,
+  fallaDeEnvio,
   mensajeErrorReclamo,
   validarReclamo,
   MAX_AREA,
@@ -45,6 +47,7 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
   const [errores, setErrores] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [canalAlterno, setCanalAlterno] = useState(false);
   const [constancia, setConstancia] = useState<Constancia | null>(null);
 
   const cambiar = (nombre: string, valor: string) => {
@@ -71,6 +74,7 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
 
     setEnviando(true);
     setErrorMsg(null);
+    setCanalAlterno(false);
     try {
       const supabase = createClient();
       const { data, error } = await supabase.rpc("registrar_reclamo", {
@@ -80,12 +84,14 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
       if (error || typeof respuesta?.codigo !== "string" || typeof respuesta?.fecha !== "string") {
         // No se guardó: el formulario queda tal cual para volver a enviar.
         setErrorMsg(mensajeErrorReclamo(error));
+        setCanalAlterno(fallaDeEnvio(error));
         return;
       }
       setConstancia({ codigo: respuesta.codigo, fecha: respuesta.fecha, datos: resultado.datos });
       window.scrollTo({ top: 0 });
     } catch {
       setErrorMsg(mensajeErrorReclamo(null));
+      setCanalAlterno(true);
     } finally {
       setEnviando(false);
     }
@@ -263,6 +269,8 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
         {enviando ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> : null}
         {enviando ? "Enviando…" : "Enviar hoja de reclamación"}
       </button>
+
+      {canalAlterno && <CanalAlternativoReclamo />}
 
       <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />
     </form>

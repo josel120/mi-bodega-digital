@@ -8,6 +8,7 @@ import { Merchant } from "@/types/database";
 import { MOSTRAR_PLANES } from "@/lib/features";
 import { loadMerchant, sesionLocal } from "@/lib/merchant";
 import MerchantOnboarding from "@/components/MerchantOnboarding";
+import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import ErrorToast from "@/components/ErrorToast";
 import { checkoutUrl } from "@/lib/checkout";
 import {
@@ -259,6 +260,8 @@ export default function SubscriptionPage() {
           <ShieldCheck className="w-4 h-4 text-slate-500" />
           <span>Pagos procesados de forma segura con Mercado Pago</span>
         </div>
+
+        <AvisoLibroReclamaciones />
       </main>
       <ErrorToast message={errorMsg} onClose={() => setErrorMsg(null)} />
     </div>

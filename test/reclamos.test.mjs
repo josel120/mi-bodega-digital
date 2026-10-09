@@ -81,3 +81,18 @@ test("errores de la base se traducen sin mostrar textos técnicos", () => {
   assert.match(mensajeErrorReclamo({ message: "RECLAMO_FALTA_CAMPO" }), /Revisa el formulario/);
   assert.match(mensajeErrorReclamo({ message: "TypeError: Failed to fetch" }), /sigue en el formulario/);
 });
+
+test("fallaDeEnvio: red o servidor sí, dato inválido no", async () => {
+  const { fallaDeEnvio } = await import("../src/lib/reclamos.ts");
+  assert.equal(fallaDeEnvio({ message: "TypeError: Failed to fetch" }), true);
+  assert.equal(fallaDeEnvio({ message: "project paused" }), true);
+  assert.equal(fallaDeEnvio({ message: "RECLAMO_INVALIDO" }), false);
+  assert.equal(fallaDeEnvio({ message: "RECLAMO_FALTA_CAMPO" }), false);
+});
+
+test("canal alternativo y aviso: constantes presentes", async () => {
+  const doc = await import("../src/content/legal/reclamaciones.ts");
+  assert.match(doc.AVISO_LIBRO, /TEXTO OFICIAL PENDIENTE/);
+  assert.equal(doc.URL_TU_LIBRO, "https://consumidor.indecopi.gob.pe/tulibro/");
+  assert.ok(doc.SECCIONES[0].parrafos[1].includes(doc.CORREO_CONTACTO));
+});
