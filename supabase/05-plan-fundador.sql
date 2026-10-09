@@ -111,7 +111,7 @@ create or replace function public.cupo_fundador()
 returns int
 language sql
 immutable
-set search_path = public
+set search_path = public, pg_temp
 as $$ select 30 $$;
 
 -- Bodegas que hoy ocupan un cupo, sin contar a `p_excluir` (la bodega que
@@ -121,7 +121,7 @@ returns int
 language sql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
   select count(distinct merchant_id)::int
     from public.membership_orders
@@ -137,7 +137,7 @@ returns jsonb
 language plpgsql
 stable
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_merchant uuid;
@@ -171,7 +171,7 @@ create or replace function public.recalcular_vigencia(p_merchant_id uuid)
 returns timestamptz
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_order public.membership_orders;
@@ -213,7 +213,7 @@ create or replace function public.reservar_membresia(p_user_id uuid, p_plan text
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   v_merchant uuid;
