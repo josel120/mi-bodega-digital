@@ -10,6 +10,22 @@ export const PLANS = Object.freeze({
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const reply = (status, body, headers = {}) => Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
 
+// Registro estructurado de fallos de pago (S5). Lista cerrada de campos: nunca se vuelcan
+// cuerpos, cabeceras, firmas, tokens, correos ni mensajes del proveedor (pueden traer PII).
+// Cada valor debe parecer un identificador (UUID, número, código); si no, se omite.
+const LOG_FIELDS = ["event", "orderId", "paymentId", "reason", "status", "errorName"];
+const SAFE_VALUE = /^[A-Za-z0-9_.:-]{1,64}$/;
+export function logPaymentEvent(event, fields = {}, sink = console.warn) {
+  const entry = { event };
+  for (const key of LOG_FIELDS) {
+    if (key === "event" || fields[key] === undefined || fields[key] === null) continue;
+    const value = String(fields[key]);
+    entry[key] = SAFE_VALUE.test(value) ? value : "[omitido]";
+  }
+  try { sink(JSON.stringify(entry)); } catch { /* el registro nunca debe romper la respuesta */ }
+}
+const errorName = (error) => (error instanceof Error ? error.name : typeof error);
+
 export function validCheckoutUrl(value) {
   try {
     const url = new URL(value);
@@ -42,6 +58,7 @@ export function createCheckoutHandler(deps) {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (request.method !== "POST") return reply(405, { error: "Usa POST." }, cors);
     if (!deps.config.enabled) return reply(503, { error: "Los pagos todavía no están disponibles." }, cors);
+    let orderId;
     try {
       const authorization = request.headers.get("authorization") ?? "";
       if (!/^Bearer \S+$/.test(authorization)) return reply(401, { error: "Vuelve a iniciar sesión." }, cors);
@@ -56,6 +73,7 @@ export function createCheckoutHandler(deps) {
       if (reservation.founder_closed) return reply(409, { error: "El Plan Fundador cerró sus cupos nuevos el 31 de diciembre de 2026.", code: "founder_closed" }, cors);
       if (reservation.founder_ended) return reply(409, { error: "Ya usaste los 6 meses del Plan Fundador. Elige el Plan Mensual o el Anual.", code: "founder_ended" }, cors);
       const order = reservation.order;
+      orderId = order?.id;
       if (!order || order.plan_type !== body.planType) return reply(409, { error: "No pudimos preparar este pedido." }, cors);
       if (order.status === "paid") return reply(409, { error: "Este pedido ya está pagado. Revisa tu plan." }, cors);
       if (order.checkout_url && validCheckoutUrl(order.checkout_url) && new Date(order.expires_at).getTime() > Date.now()) return reply(200, { init_point: order.checkout_url }, cors);
@@ -75,7 +93,8 @@ export function createCheckoutHandler(deps) {
       if (!preference.id || !validCheckoutUrl(checkoutUrl)) throw new Error("Preferencia inválida");
       await deps.savePreference(order.id, preference.id, checkoutUrl);
       return reply(200, { init_point: checkoutUrl }, cors);
-    } catch {
+    } catch (error) {
+      logPaymentEvent("checkout_failed", { orderId, reason: "excepcion", errorName: errorName(error) }, console.error);
       // No devolver textos del proveedor: pueden incluir emails o secretos.
       return reply(503, { error: "No pudimos preparar el pago. No vuelvas a pagar si ya lo hiciste; revisa tu plan más tarde." }, cors);
     }
@@ -90,22 +109,35 @@ export function createWebhookHandler(deps) {
     const url = new URL(request.url);
     const id = url.searchParams.get("data.id");
     if (url.searchParams.get("type") !== "payment" || !/^\d+$/.test(id ?? "")) return reply(400, { error: "Evento no admitido." });
+    let orderId;
     try {
       // El body y la redirección del checkout nunca acreditan un pago.
       const payment = await deps.getPayment(id);
       if (String(payment.id) !== id || !UUID.test(payment.external_reference ?? "")) return reply(200, { ignored: true });
       const order = await deps.getOrder(payment.external_reference);
       if (!order) return reply(200, { ignored: true });
+      orderId = order.id;
       const plan = PLANS[order.plan_type];
-      if (!plan || payment.currency_id !== "PEN" || payment.transaction_amount !== plan.amount || order.amount !== plan.amount || payment.live_mode !== deps.config.live || String(payment.collector_id) !== deps.config.collectorId) return reply(422, { error: "El pago no coincide con el pedido." });
+      const mismatch = !plan ? "plan_desconocido"
+        : payment.currency_id !== "PEN" ? "moneda"
+        : (payment.transaction_amount !== plan.amount || order.amount !== plan.amount) ? "importe"
+        : payment.live_mode !== deps.config.live ? "modo"
+        : String(payment.collector_id) !== deps.config.collectorId ? "vendedor" : null;
+      if (mismatch) {
+        logPaymentEvent("webhook_rejected", { orderId, paymentId: id, reason: mismatch, status: 422 }, console.error);
+        return reply(422, { error: "El pago no coincide con el pedido." });
+      }
       const refunded = Number(payment.transaction_amount_refunded ?? 0);
-      if (!Number.isFinite(refunded) || refunded < 0) return reply(422, { error: "Reembolso inválido." });
+      if (!Number.isFinite(refunded) || refunded < 0) { logPaymentEvent("webhook_rejected", { orderId, paymentId: id, reason: "reembolso_invalido", status: 422 }, console.error); return reply(422, { error: "Reembolso inválido." }); }
       let state = payment.status;
       if (state === "approved" && refunded > 0) state = "refunded";
       if (!["approved", "refunded", "charged_back"].includes(state)) return reply(200, { ignored: true });
-      if (state === "approved" && !Number.isFinite(Date.parse(payment.date_approved ?? ""))) return reply(422, { error: "Falta fecha del pago." });
+      if (state === "approved" && !Number.isFinite(Date.parse(payment.date_approved ?? ""))) { logPaymentEvent("webhook_rejected", { orderId, paymentId: id, reason: "fecha_faltante", status: 422 }, console.error); return reply(422, { error: "Falta fecha del pago." }); }
       await deps.applyPayment({ orderId: order.id, paymentId: id, state, approvedAt: payment.date_approved ?? null });
       return reply(200, { received: true });
-    } catch { return reply(503, { error: "No se pudo conciliar. Reintenta la notificación." }); }
+    } catch (error) {
+      logPaymentEvent("webhook_failed", { orderId, paymentId: id, reason: "excepcion", status: 503, errorName: errorName(error) }, console.error);
+      return reply(503, { error: "No se pudo conciliar. Reintenta la notificación." });
+    }
   };
 }
