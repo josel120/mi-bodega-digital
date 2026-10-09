@@ -7,8 +7,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: "pages"
@@ -17,24 +15,23 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # El build ejecuta scripts de dependencias: solo lectura (S7).
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: "22"
           cache: "npm"
 
-      # Ojo: NO usamos `static_site_generator: next`. Esa opcion hace que la
-      # action escriba su propio next.config.js, que le gana al next.config.ts
-      # del repo y se lleva puestos trailingSlash y NEXT_PUBLIC_BASE_PATH:
-      # /dashboard/ responde 404, el manifest y los iconos pierden el prefijo
-      # /mi-bodega-digital y el service worker nunca llega a registrarse.
-      # Nuestro next.config.ts ya define basePath, output export e images.
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
+      # Sin actions/configure-pages: su salida no se usa (next.config.ts ya define
+      # basePath, output export e images) y pedia pages/id-token en el build.
+      # NO usar `static_site_generator: next`: escribe su propio next.config.js y
+      # se lleva trailingSlash y NEXT_PUBLIC_BASE_PATH (manifest e iconos sin prefijo).
 
       - name: Install dependencies
         run: npm ci
@@ -46,7 +43,7 @@ jobs:
         run: npm run build
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: ./out
 
@@ -56,7 +53,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      pages: write
+      id-token: write
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
