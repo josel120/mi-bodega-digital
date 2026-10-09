@@ -81,6 +81,7 @@ create function public.rls_probar_aislamiento(
 declare
   n int;
   v_saldo numeric;
+  v_esperado numeric;
 begin
   perform set_config('request.jwt.claims', json_build_object('role', 'authenticated', 'sub', p_me)::text, true);
   set local role authenticated;
@@ -157,8 +158,9 @@ begin
   end;
 
   -- Control positivo de la RPC sobre lo propio.
+  select balance + 1 into v_esperado from public.customers_debts where id = p_my_debt;
   v_saldo := public.aplicar_movimiento_fiado(gen_random_uuid(), p_my_debt, 1);
-  if v_saldo is distinct from 6 then raise exception 'RLS: la RPC no funciona sobre fiado propio (%)', v_saldo; end if;
+  if v_saldo is distinct from v_esperado then raise exception 'RLS: la RPC no funciona sobre fiado propio (%)', v_saldo; end if;
 
   reset role;
 end $$;
