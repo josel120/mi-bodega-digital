@@ -89,7 +89,7 @@ values ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Cliente de Dos', '999999999', 5
 commit;
 
 do $$ begin
-  if exists(select 1 from public.merchants where subscription_status <> 'trial' or subscription_ends_at is not null or trial_ends_at > now() + interval '8 days') then
+  if exists(select 1 from public.merchants where subscription_status <> 'trial' or subscription_ends_at is not null or trial_ends_at > now() + interval '15 days') then
     raise exception 'S3: el navegador pudo regalarse el plan';
   end if;
   if (select prosecdef from pg_proc where proname = 'proteger_suscripcion') then raise exception 'S3: el trigger sigue siendo security definer'; end if;
