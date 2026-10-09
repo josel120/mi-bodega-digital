@@ -42,7 +42,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Quién es responsable",
     parrafos: [
-      "El responsable de tus datos es [RAZÓN SOCIAL], con RUC [RUC] y domicilio en [DOMICILIO]. Para cualquier tema de privacidad escríbenos a [CORREO DE CONTACTO].",
+      "El responsable de tus datos es Jose Luis Gomez Araujo, con RUC 10601952251 y domicilio en Av. Paseo de la República 4456, Dpto. 301, Miraflores, Lima. Para cualquier tema de privacidad escríbenos a josegomez120@gmail.com.",
       "Tus datos están en el banco de datos «Usuarios de Mi Bodega Digital», inscrito ante la Autoridad Nacional de Protección de Datos Personales (ANPD) con el código [CÓDIGO DE INSCRIPCIÓN ANPD].",
     ],
   },
@@ -90,7 +90,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
       "Supabase: guarda la base de datos y maneja el ingreso a tu cuenta. Sus servidores están en Estados Unidos.",
       "Mercado Pago: procesa los pagos de tu plan. Tus datos de pago los recibe directamente Mercado Pago, según sus propias reglas de privacidad. Puede tratarlos en Perú y en otros países.",
       "GitHub (GitHub Pages): publica la página de la app. Registra datos técnicos de conexión, como la IP. Sus servidores están en Estados Unidos.",
-      "[PROVEEDOR DE CORREO]: envía los correos de la cuenta (por ejemplo, recuperar tu clave). [PAÍS DEL PROVEEDOR DE CORREO].",
+      "Resend: envía los correos de la cuenta (por ejemplo, recuperar tu clave) y la copia de tu hoja de reclamación. Sus servidores están en Estados Unidos.",
       "Como algunos de estos servidores están fuera del Perú, hay una transferencia internacional de datos. Elegimos proveedores con medidas de seguridad reconocidas y les damos solo lo necesario.",
       "Solo entregaremos datos a una autoridad cuando la ley lo exija.",
     ],
@@ -116,7 +116,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
     titulo: "Tus derechos y cómo usarlos",
     parrafos: [
       "Tienes derecho a saber qué datos tenemos de ti (acceso), a corregirlos (rectificación), a que los borremos (cancelación) y a pedir que dejemos de usarlos para algo (oposición). También puedes pedir una copia de tus datos en un formato que puedas llevarte (portabilidad).",
-      "Para pedirlo, escríbenos a [CORREO DE CONTACTO] desde el correo de tu cuenta, diciendo qué necesitas. Si escribes desde otro correo, te pediremos algo para confirmar que eres tú. No cobramos nada por atenderte.",
+      "Para pedirlo, escríbenos a josegomez120@gmail.com desde el correo de tu cuenta, diciendo qué necesitas. Si escribes desde otro correo, te pediremos algo para confirmar que eres tú. No cobramos nada por atenderte.",
       "Te responderemos en un máximo de [PLAZO ARCO] días hábiles.",
       "Si no estás de acuerdo con nuestra respuesta, o no te respondemos, puedes presentar una reclamación ante la Autoridad Nacional de Protección de Datos Personales del Ministerio de Justicia y Derechos Humanos.",
     ],

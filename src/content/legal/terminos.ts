@@ -30,7 +30,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Quiénes somos",
     parrafos: [
-      "Mi Bodega Digital es un servicio de [RAZÓN SOCIAL], con RUC [RUC] y domicilio en [DOMICILIO]. Puedes escribirnos a [CORREO DE CONTACTO].",
+      "Mi Bodega Digital es un servicio de Jose Luis Gomez Araujo, con RUC 10601952251 y domicilio en Av. Paseo de la República 4456, Dpto. 301, Miraflores, Lima. Puedes escribirnos a josegomez120@gmail.com.",
       "Al crear tu cuenta aceptas estos términos y nuestro Aviso de privacidad. Léelos con calma; si algo no te queda claro, pregúntanos antes de pagar.",
     ],
   },
@@ -119,7 +119,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
     titulo: "Uso correcto",
     parrafos: [
       "No está permitido: usar la app para algo ilegal, intentar entrar a cuentas de otras personas, atacar o sobrecargar el servicio, o copiar la app para venderla.",
-      "La app, su nombre y su diseño son de [RAZÓN SOCIAL]. Te damos permiso para usarla mientras tengas tu cuenta; no te vendemos el programa.",
+      "La app, su nombre y su diseño son de Jose Luis Gomez Araujo. Te damos permiso para usarla mientras tengas tu cuenta; no te vendemos el programa.",
     ],
   },
   {
@@ -149,7 +149,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Reclamos, ley y jueces",
     parrafos: [
-      "Si algo no te gustó, escríbenos a [CORREO DE CONTACTO] o usa nuestro Libro de Reclamaciones virtual en la app. Respondemos los reclamos en un máximo de 15 días hábiles.",
+      "Si algo no te gustó, escríbenos a josegomez120@gmail.com o usa nuestro Libro de Reclamaciones virtual en la app. Respondemos los reclamos en un máximo de 15 días hábiles.",
       "Estos términos se rigen por las leyes del Perú. Puedes acudir a Indecopi o a los jueces competentes del Perú.",
     ],
   },

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import { Loader2 } from "lucide-react";
 
 export default function Home() {
@@ -17,6 +18,7 @@ export default function Home() {
       <p className="text-xs text-slate-500 font-medium">
         Cargando Mi Bodega Digital...
       </p>
+      <AvisoLibroReclamaciones className="mt-6 mx-4 max-w-md" />
     </div>
   );
 }

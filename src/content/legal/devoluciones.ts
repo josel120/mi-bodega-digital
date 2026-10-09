@@ -72,7 +72,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Cómo pedir tu devolución",
     parrafos: [
-      "Escríbenos a [CORREO DE CONTACTO] desde el correo de tu cuenta, con el asunto «Devolución» y el número de operación de Mercado Pago si lo tienes.",
+      "Escríbenos a josegomez120@gmail.com desde el correo de tu cuenta, con el asunto «Devolución» y el número de operación de Mercado Pago si lo tienes.",
       "Te respondemos en un máximo de [PLAZO PARA RESPONDER DEVOLUCIONES] días hábiles.",
       "Devolvemos por el mismo medio con el que pagaste, a través de Mercado Pago. Cuánto tarda en verse en tu tarjeta o cuenta depende de Mercado Pago y de tu banco.",
       "Si no estás conforme con la respuesta, puedes usar nuestro Libro de Reclamaciones virtual o acudir a Indecopi.",
