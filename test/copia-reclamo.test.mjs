@@ -39,7 +39,7 @@ test("el correo trae código, fecha de Lima, plazo y datos escapados", () => {
   assert.match(c.texto, /Fecha y hora \(Lima\):.*10/); // 15:00Z = 10:00 en Lima
   assert.match(c.texto, /Nombre y apellidos: Ana <b>Pérez<\/b>/); // texto plano no se escapa
   assert.match(c.texto, /Línea 1\nLínea 2/);
-  assert.ok(c.texto.includes("[RAZÓN SOCIAL]") && c.texto.includes("[RUC]") && c.texto.includes("[DOMICILIO]"));
+  assert.ok(c.texto.includes("Jose Luis Gomez Araujo") && c.texto.includes("RUC 10601952251") && c.texto.includes("Miraflores"));
   assert.ok(c.texto.includes("josegomez120@gmail.com"));
 });
 

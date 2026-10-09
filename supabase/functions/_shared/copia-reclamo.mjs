@@ -67,7 +67,7 @@ function unaLinea(texto) {
 export function construirCorreoReclamo({ codigo, fecha, datos, contacto = CORREO_CONTACTO_DEFECTO }) {
   const filas = ETIQUETAS.filter(([nombre]) => String(datos?.[nombre] ?? "").trim() !== "").map(([nombre, etiqueta]) => [etiqueta, String(datos[nombre])]);
   const cuando = fechaLima(fecha);
-  const proveedor = `Proveedor: [RAZÓN SOCIAL] · RUC [RUC] · Domicilio: [DOMICILIO] · Correo: ${contacto}`;
+  const proveedor = `Proveedor: Jose Luis Gomez Araujo · RUC 10601952251 · Domicilio: Av. Paseo de la República 4456, Dpto. 301, Miraflores, Lima · Correo: ${contacto}`;
   const plazo = "Te respondemos por escrito en un plazo máximo de 15 días hábiles, por el medio que elegiste en tu hoja.";
   const pie = [
     "Recibes este correo porque registraste una hoja en el Libro de Reclamaciones virtual de Mi Bodega Digital. Es una copia automática que manda el sistema, como manda la ley; no hace falta que respondas para que tu hoja siga su curso.",

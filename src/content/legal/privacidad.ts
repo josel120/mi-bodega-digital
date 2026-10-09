@@ -42,7 +42,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Quién es responsable",
     parrafos: [
-      "El responsable de tus datos es [RAZÓN SOCIAL], con RUC [RUC] y domicilio en [DOMICILIO]. Para cualquier tema de privacidad escríbenos a josegomez120@gmail.com.",
+      "El responsable de tus datos es Jose Luis Gomez Araujo, con RUC 10601952251 y domicilio en Av. Paseo de la República 4456, Dpto. 301, Miraflores, Lima. Para cualquier tema de privacidad escríbenos a josegomez120@gmail.com.",
       "Tus datos están en el banco de datos «Usuarios de Mi Bodega Digital», inscrito ante la Autoridad Nacional de Protección de Datos Personales (ANPD) con el código [CÓDIGO DE INSCRIPCIÓN ANPD].",
     ],
   },

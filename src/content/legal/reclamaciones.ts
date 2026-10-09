@@ -59,7 +59,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
     titulo: "Libro de Reclamaciones virtual",
     parrafos: [
       "Conforme al Código de Protección y Defensa del Consumidor, contamos con un Libro de Reclamaciones virtual a tu disposición.",
-      `Proveedor: [RAZÓN SOCIAL] · RUC [RUC] · Domicilio: [DOMICILIO] · Correo: ${CORREO_CONTACTO}.`,
+      `Proveedor: Jose Luis Gomez Araujo · RUC 10601952251 · Domicilio: Av. Paseo de la República 4456, Dpto. 301, Miraflores, Lima · Correo: ${CORREO_CONTACTO}.`,
     ],
   },
   {
