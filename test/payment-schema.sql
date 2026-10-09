@@ -67,6 +67,11 @@ rollback;
 
 -- Plan fundador (05): precio, cupo de 30 bodegas, retención y renovación.
 begin;
+-- La fecha de cierre (D3) es real: pasado 2026-12-31 estos casos no pueden depender de now().
+-- Dentro de esta transacción (se deshace con rollback) el cierre se corre al año 2100;
+-- los casos de fechas están en los bloques de más abajo y pasan la hora a mano.
+create or replace function public.cierre_fundador() returns timestamptz language sql immutable
+  as $$ select timestamptz '2100-01-01 00:00:00-05' $$;
 set local role service_role;
 select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 -- 31 bodegas: M01 (aaaa…0001) a M31; los uuid se derivan del número.
@@ -141,6 +146,27 @@ do $$ declare r jsonb; v_exp timestamptz; v_vigencia timestamptz; v_estado text;
   r := public.reservar_membresia('10000000-0000-4000-8000-000000000032', 'founder', 'b0000000-0000-4000-8000-000000000033');
   if r->>'created' <> 'true' then raise exception 'Retención vencida seguía ocupando: %', r; end if;
 
+  -- D2: 6 meses fundador por bodega. M02 ya tiene 2 pagados; con 4 más llega a 6 y el 7.º se rechaza.
+  for i in 1..4 loop
+    insert into public.membership_orders(id, merchant_id, plan_type, amount, status, payment_id, approved_at)
+      values (gen_random_uuid(), '00000000-0000-4000-8000-000000000002', 'founder', 19, 'paid', (9400 + i)::text, now());
+  end loop;
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000002', 'founder', 'b0000000-0000-4000-8000-000000000201');
+  if r->>'founder_ended' <> 'true' or r->>'created' <> 'false' or r ? 'order' then raise exception 'Séptimo mes fundador: %', r; end if;
+  if exists(select 1 from public.membership_orders where id = 'b0000000-0000-4000-8000-000000000201') then raise exception 'Pedido de más'; end if;
+  -- Mensual y anual siguen disponibles para quien agotó sus 6 meses.
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000002', 'yearly', 'b0000000-0000-4000-8000-000000000202');
+  if (r->'order'->>'amount')::numeric <> 279 then raise exception 'Anual tras 6 meses: %', r; end if;
+  update public.membership_orders set status = 'refunded' where id = 'b0000000-0000-4000-8000-000000000202';
+  -- Una devolución no cuenta como mes usado: con 5 pagados + 1 devuelto aún puede comprar el 6.º.
+  update public.membership_orders set status = 'refunded'
+   where id = (select id from public.membership_orders where merchant_id = '00000000-0000-4000-8000-000000000002' and plan_type = 'founder' and status = 'paid' limit 1);
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000002', 'founder', 'b0000000-0000-4000-8000-000000000203');
+  if r->>'created' <> 'true' then raise exception 'Devuelto contó como mes: %', r; end if;
+  -- El pedido en curso ya cuenta como 6.º mes: no puede comprar otro en paralelo.
+  if public.decidir_fundador('00000000-0000-4000-8000-000000000002') <> 'ended' then raise exception 'Pedido en curso no cuenta como mes'; end if;
+  if public.meses_fundador_usados('00000000-0000-4000-8000-000000000002') <> 6 then raise exception 'Meses usados: %', public.meses_fundador_usados('00000000-0000-4000-8000-000000000002'); end if;
+
   -- Contracargo de un fundador libera su cupo y su vigencia.
   perform public.aplicar_pago_membresia('b0000000-0000-4000-8000-000000000033', '9301', 'approved', now());
   if public.fundadores_ocupados() <> 30 then raise exception 'Conteo final: %', public.fundadores_ocupados(); end if;
@@ -173,5 +199,46 @@ select set_config('request.jwt.claims', '{"role":"authenticated","sub":"10000000
 do $$ declare e jsonb; begin
   e := public.estado_fundador();
   if (e->>'remaining')::int <> 0 or (e->>'can_buy')::boolean is not false or (e->>'is_founder')::boolean is not false then raise exception 'estado_fundador (agotado): %', e; end if;
+end $$;
+rollback;
+
+-- D3: cierre de cupos nuevos el 2026-12-31 (Lima). No depende de la fecha de hoy: decidir_fundador recibe la hora.
+begin;
+insert into public.merchants (id, user_id, business_name)
+select ('00000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid,
+       ('10000000-0000-4000-8000-' || lpad(n::text, 12, '0'))::uuid, 'Bodega ' || n
+  from generate_series(1, 3) n;
+-- M01 ya es fundadora (1 mes pagado); M02 es nueva; M03 tiene 6 meses pagados.
+insert into public.membership_orders(id, merchant_id, plan_type, amount, status, payment_id, approved_at)
+  values (gen_random_uuid(), '00000000-0000-4000-8000-000000000001', 'founder', 19, 'paid', '8001', '2026-11-01');
+insert into public.membership_orders(id, merchant_id, plan_type, amount, status, payment_id, approved_at)
+  select gen_random_uuid(), '00000000-0000-4000-8000-000000000003', 'founder', 19, 'paid', (8100 + i)::text, '2026-11-01' from generate_series(1, 6) i;
+do $$ declare m1 uuid := '00000000-0000-4000-8000-000000000001'; m2 uuid := '00000000-0000-4000-8000-000000000002'; m3 uuid := '00000000-0000-4000-8000-000000000003'; begin
+  if public.cierre_fundador() <> '2027-01-01 00:00:00-05'::timestamptz or public.cierre_fundador() <> '2027-01-01 05:00:00+00'::timestamptz then raise exception 'Cierre mal definido'; end if;
+  if public.meses_fundador() <> 6 or public.cupo_fundador() <> 30 then raise exception 'Reglas mal definidas'; end if;
+  -- Última hora de plazo: bodega nueva todavía entra.
+  if public.decidir_fundador(m2, '2026-12-31 23:59:59-05') <> 'ok' then raise exception 'Cierre anticipado'; end if;
+  -- Un segundo después: bodega nueva queda fuera.
+  if public.decidir_fundador(m2, '2027-01-01 00:00:00-05') <> 'closed' then raise exception 'Bodega nueva entró tarde'; end if;
+  if public.decidir_fundador(null, '2027-06-01 00:00:00-05') <> 'closed' then raise exception 'Sin bodega entró tarde'; end if;
+  -- La bodega que ya era fundadora sigue hasta usar 6 meses, después de la fecha.
+  if public.decidir_fundador(m1, '2027-02-01') <> 'ok' then raise exception 'Fundadora cortada por la fecha'; end if;
+  if public.decidir_fundador(m3, '2027-02-01') <> 'ended' then raise exception 'Séptimo mes tras la fecha'; end if;
+  if public.decidir_fundador(m3, '2026-10-10') <> 'ended' then raise exception 'Séptimo mes antes de la fecha'; end if;
+end $$;
+-- Con la reserva real: cierre en el pasado => bodega nueva `founder_closed`, fundadora sigue.
+create or replace function public.cierre_fundador() returns timestamptz language sql immutable
+  as $$ select timestamptz '2020-01-01 00:00:00-05' $$;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+do $$ declare r jsonb; begin
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000002', 'founder', 'c0000000-0000-4000-8000-000000000001');
+  if r->>'founder_closed' <> 'true' or r->>'created' <> 'false' or r ? 'order' then raise exception 'Reserva tardía de bodega nueva: %', r; end if;
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000001', 'founder', 'c0000000-0000-4000-8000-000000000002');
+  if r->>'created' <> 'true' then raise exception 'Fundadora no pudo renovar tras la fecha: %', r; end if;
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000003', 'founder', 'c0000000-0000-4000-8000-000000000003');
+  if r->>'founder_ended' <> 'true' then raise exception 'Séptimo mes tras la fecha (reserva): %', r; end if;
+  r := public.reservar_membresia('10000000-0000-4000-8000-000000000002', 'monthly', 'c0000000-0000-4000-8000-000000000004');
+  if (r->'order'->>'amount')::numeric <> 29 then raise exception 'Mensual tras cierre: %', r; end if;
 end $$;
 rollback;

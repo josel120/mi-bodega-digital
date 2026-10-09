@@ -53,6 +53,8 @@ export function createCheckoutHandler(deps) {
       const reservation = await deps.reserve(user.id, body.planType, body.requestId);
       // Sin cupo fundador la base no crea pedido: se avisa claro, sin crear checkout.
       if (reservation.sold_out) return reply(409, { error: "Ya no quedan cupos del Plan Fundador.", code: "founder_sold_out" }, cors);
+      if (reservation.founder_closed) return reply(409, { error: "El Plan Fundador cerró sus cupos nuevos el 31 de diciembre de 2026.", code: "founder_closed" }, cors);
+      if (reservation.founder_ended) return reply(409, { error: "Ya usaste los 6 meses del Plan Fundador. Elige el Plan Mensual o el Anual.", code: "founder_ended" }, cors);
       const order = reservation.order;
       if (!order || order.plan_type !== body.planType) return reply(409, { error: "No pudimos preparar este pedido." }, cors);
       if (order.status === "paid") return reply(409, { error: "Este pedido ya está pagado. Revisa tu plan." }, cors);

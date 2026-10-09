@@ -82,6 +82,14 @@ describe("plan fundador", () => {
     const response = await handler(request({ planType: "founder", requestId: ID }));
     assert.equal(response.status, 409); assert.equal((await response.json()).code, "founder_sold_out");
   });
+  it("cierre de cupos y 6 meses usados responden 409 con su código y no crean preferencia", async () => {
+    const never = async () => { throw new Error("No debía crear preferencia"); };
+    for (const [resultado, code] of [[{ founder_closed: true }, "founder_closed"], [{ founder_ended: true }, "founder_ended"]]) {
+      const handler = createCheckoutHandler(checkoutDeps({ reserve: async () => ({ created: false, ...resultado }), createPreference: never }));
+      const response = await handler(request({ planType: "founder", requestId: ID }));
+      assert.equal(response.status, 409); assert.equal((await response.json()).code, code);
+    }
+  });
   it("el webhook solo concilia el pago fundador si pago y pedido son de S/ 19", async () => {
     const founder = (overrides) => order({ plan_type: "founder", amount: 19, ...overrides });
     const ok = [];

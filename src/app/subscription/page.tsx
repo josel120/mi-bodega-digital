@@ -11,7 +11,7 @@ import MerchantOnboarding from "@/components/MerchantOnboarding";
 import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import ErrorToast from "@/components/ErrorToast";
 import { checkoutUrl } from "@/lib/checkout";
-import { parseEstadoFundador, esFundadorAgotado, type EstadoFundador } from "@/lib/fundador";
+import { parseEstadoFundador, codigoFundador, type EstadoFundador } from "@/lib/fundador";
 import {
   CheckCircle2,
   Clock,
@@ -95,8 +95,12 @@ export default function SubscriptionPage() {
       if (!url) throw new Error("Enlace inválido");
       window.location.assign(url);
     } catch (e) {
-      if (planType === "founder" && await esFundadorAgotado(e)) {
-        setErrorMsg("Justo se ocuparon los últimos cupos del Plan Fundador. Puedes elegir otro plan.");
+      const codigo = planType === "founder" ? await codigoFundador(e) : null;
+      if (codigo) {
+        setErrorMsg(
+          codigo === "founder_sold_out" ? "Justo se ocuparon los últimos cupos del Plan Fundador. Puedes elegir otro plan."
+          : codigo === "founder_closed" ? "El Plan Fundador ya cerró sus cupos nuevos. Puedes elegir el Plan Mensual o el Anual."
+          : "Ya usaste los 6 meses del Plan Fundador. Puedes elegir el Plan Mensual o el Anual.");
         void cargarFundador();
         return;
       }
@@ -185,7 +189,7 @@ export default function SubscriptionPage() {
           {fundador && (fundador.canBuy ? (
             <div className="bg-white rounded-2xl p-5 shadow-sm border-2 border-emerald-500 relative overflow-hidden">
               <div className="absolute top-3 right-3 bg-emerald-500 text-slate-950 font-extrabold text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide">
-                {fundador.isFounder ? "Bodega fundadora" : `Quedan ${fundador.remaining} de ${fundador.cap}`}
+                {fundador.isFounder ? `Te quedan ${fundador.monthsLeft} de ${fundador.monthsTotal} meses` : `Quedan ${fundador.remaining} de ${fundador.cap}`}
               </div>
               <div className="flex justify-between items-start mb-2">
                 <div>
@@ -200,7 +204,7 @@ export default function SubscriptionPage() {
                 </div>
               </div>
               <p className="text-xs text-slate-600 my-3">
-                Precio especial para las primeras {fundador.cap} bodegas. Tiene todo lo del Plan Mensual.
+                S/ 19 al mes durante {fundador.monthsTotal} meses · cupos hasta el 31 de diciembre de 2026. Tiene todo lo del Plan Mensual.
               </p>
               <button
                 onClick={() => handleSubscribe("founder")}
@@ -221,7 +225,11 @@ export default function SubscriptionPage() {
             <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-slate-500">
               <h3 className="font-bold text-slate-600">Plan Fundador · S/ 19.00/mes</h3>
               <p className="text-xs mt-1">
-                Ya se ocuparon los {fundador.cap} cupos del Plan Fundador. Puedes elegir el Plan Mensual o el Anual.
+                {fundador.reason === "ended"
+                  ? `Ya usaste los ${fundador.monthsTotal} meses del Plan Fundador. Puedes seguir con el Plan Mensual o el Anual.`
+                  : fundador.reason === "closed"
+                    ? "Los cupos del Plan Fundador cerraron el 31 de diciembre de 2026. Puedes elegir el Plan Mensual o el Anual."
+                    : `Ya se ocuparon los ${fundador.cap} cupos del Plan Fundador. Puedes elegir el Plan Mensual o el Anual.`}
               </p>
             </div>
           ))}
