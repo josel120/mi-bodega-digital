@@ -1,7 +1,7 @@
 // app/subscription/page.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Merchant } from "@/types/database";
@@ -11,6 +11,7 @@ import MerchantOnboarding from "@/components/MerchantOnboarding";
 import AvisoLibroReclamaciones from "@/components/AvisoLibroReclamaciones";
 import ErrorToast from "@/components/ErrorToast";
 import { checkoutUrl } from "@/lib/checkout";
+import { parseEstadoFundador, esFundadorAgotado, type EstadoFundador } from "@/lib/fundador";
 import {
   CheckCircle2,
   Clock,
@@ -18,6 +19,8 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react";
+
+type PlanType = "monthly" | "yearly" | "founder";
 
 export default function SubscriptionPage() {
   const [merchant, setMerchant] = useState<Merchant | null>(null);
@@ -28,10 +31,19 @@ export default function SubscriptionPage() {
   const [merchantLoaded, setMerchantLoaded] = useState(false);
   const [checkedAt, setCheckedAt] = useState(() => Date.now());
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
-  const requestIds = useRef<Partial<Record<"monthly" | "yearly", string>>>({});
+  const [fundador, setFundador] = useState<EstadoFundador | null>(null);
+  const requestIds = useRef<Partial<Record<PlanType, string>>>({});
 
   const router = useRouter();
   const supabase = createClient();
+
+  // Si la base aún no tiene el plan fundador (o falla), la tarjeta simplemente no aparece.
+  const cargarFundador = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc("estado_fundador");
+      setFundador(error ? null : parseEstadoFundador(data));
+    } catch { setFundador(null); }
+  }, [supabase]);
 
   useEffect(() => {
     // Durante el piloto la pantalla de planes está apagada.
@@ -52,6 +64,7 @@ export default function SubscriptionPage() {
       const { merchant: merchantData, error } = await loadMerchant(supabase, user.id);
       if (error) setErrorMsg("No pudimos cargar tu plan. Revisa tu señal y vuelve a intentar.");
       else { setMerchant(merchantData); setMerchantLoaded(true); setCheckedAt(Date.now()); }
+      void cargarFundador();
       // Los parámetros del regreso no prueban el pago; el estado viene de la base.
       if (new URLSearchParams(window.location.search).has("payment")) {
         setPaymentNotice("Estamos comprobando tu pago. Tu plan cambia cuando Mercado Pago lo confirma. Si ya pagaste, no vuelvas a pagar; usa «Revisar mi plan».");
@@ -63,10 +76,10 @@ export default function SubscriptionPage() {
       setErrorMsg("No pudimos cargar tu plan. Revisa tu señal y vuelve a intentar.");
       setLoading(false);
     });
-  }, [router, supabase]);
+  }, [router, supabase, cargarFundador]);
 
   // Manejar redirección al Checkout / Preference de Mercado Pago
-  const handleSubscribe = async (planType: "monthly" | "yearly") => {
+  const handleSubscribe = async (planType: PlanType) => {
     if (!merchant || processingPlan) return;
     setProcessingPlan(planType);
     setErrorMsg(null);
@@ -81,7 +94,12 @@ export default function SubscriptionPage() {
       const url = checkoutUrl(data);
       if (!url) throw new Error("Enlace inválido");
       window.location.assign(url);
-    } catch {
+    } catch (e) {
+      if (planType === "founder" && await esFundadorAgotado(e)) {
+        setErrorMsg("Justo se ocuparon los últimos cupos del Plan Fundador. Puedes elegir otro plan.");
+        void cargarFundador();
+        return;
+      }
       setErrorMsg("No pudimos preparar el pago. Si ya pagaste, no vuelvas a pagar. Revisa tu plan más tarde.");
     } finally {
       setProcessingPlan(null);
@@ -163,6 +181,51 @@ export default function SubscriptionPage() {
 
         {/* Opciones de Planes */}
         <div className="space-y-3">
+          {/* Plan Fundador: el cupo lo controla la base; aquí solo se muestra */}
+          {fundador && (fundador.canBuy ? (
+            <div className="bg-white rounded-2xl p-5 shadow-sm border-2 border-emerald-500 relative overflow-hidden">
+              <div className="absolute top-3 right-3 bg-emerald-500 text-slate-950 font-extrabold text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide">
+                {fundador.isFounder ? "Bodega fundadora" : `Quedan ${fundador.remaining} de ${fundador.cap}`}
+              </div>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <h3 className="font-bold text-slate-800">Plan Fundador</h3>
+                  <p className="text-xs text-slate-400">
+                    Un mes de acceso. Sin cobros automáticos.
+                  </p>
+                </div>
+                <div className="text-right pt-5">
+                  <span className="text-xl font-extrabold text-emerald-600">S/ 19.00</span>
+                  <span className="text-xs text-slate-400">/mes</span>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 my-3">
+                Precio especial para las primeras {fundador.cap} bodegas. Tiene todo lo del Plan Mensual.
+              </p>
+              <button
+                onClick={() => handleSubscribe("founder")}
+                disabled={!!processingPlan || !merchant || !!paymentNotice}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {processingPlan === "founder" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>Pagar un mes Fundador con Mercado Pago</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          ) : (
+            <div className="bg-slate-50 rounded-2xl p-5 border border-slate-200 text-slate-500">
+              <h3 className="font-bold text-slate-600">Plan Fundador · S/ 19.00/mes</h3>
+              <p className="text-xs mt-1">
+                Ya se ocuparon los {fundador.cap} cupos del Plan Fundador. Puedes elegir el Plan Mensual o el Anual.
+              </p>
+            </div>
+          ))}
+
           {/* Plan Mensual */}
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/60 relative overflow-hidden">
             <div className="flex justify-between items-start mb-2">

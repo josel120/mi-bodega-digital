@@ -45,6 +45,8 @@ Nada de esto usa plata real: las tarjetas de prueba no cobran.
      en un proyecto nuevo no hay ninguna).
    - `supabase/02-membresias-prepago.sql`
    - `supabase/03-legal-y-cuenta.sql` (se puede repetir sin daño).
+   - `supabase/04-copia-reclamo.sql` y `supabase/05-plan-fundador.sql` (Plan Fundador S/ 19,
+     30 bodegas; sus pasos del dueño están en el encabezado).
 4. Comprobar que el final de 03 devuelve `proteger_suscripcion` con
    `prosecdef = false` y la FK con `confdeltype = n`.
 5. Authentication → Users: crear dos usuarios de prueba con correos propios del

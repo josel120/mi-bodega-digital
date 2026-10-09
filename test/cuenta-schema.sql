@@ -64,6 +64,8 @@ grant all on public.merchants, public.transactions, public.customers_debts to se
 \ir ../supabase/02-membresias-prepago.sql
 \ir ../supabase/03-legal-y-cuenta.sql
 \ir ../supabase/03-legal-y-cuenta.sql
+-- 05 reemplaza recalcular_vigencia: los casos S3/S6/S2 de abajo deben seguir pasando.
+\ir ../supabase/05-plan-fundador.sql
 
 -- Datos: dos cuentas con su bodega. U1 = aaaa…, U2 = cccc….
 insert into auth.users values

@@ -66,6 +66,36 @@ describe("checkout autenticado", () => {
   });
 });
 
+describe("plan fundador", () => {
+  it("cobra S/ 19 con precio de servidor aunque el cliente mande otro", async () => {
+    let unit = null;
+    const handler = createCheckoutHandler(checkoutDeps({
+      reserve: async (_user, plan) => { assert.equal(plan, "founder"); return { created: true, order: order({ plan_type: "founder", amount: 19 }) }; },
+      createPreference: async (body) => { unit = body.items[0]; return { id: "pref_test", init_point: CHECKOUT }; },
+    }));
+    const response = await handler(request({ planType: "founder", requestId: ID, price: 1, amount: 1 }));
+    assert.equal(response.status, 200); assert.equal(unit.unit_price, 19); assert.equal(unit.currency_id, "PEN");
+  });
+  it("sin cupo responde 409 claro y no crea preferencia", async () => {
+    const never = async () => { throw new Error("No debía crear preferencia"); };
+    const handler = createCheckoutHandler(checkoutDeps({ reserve: async () => ({ created: false, sold_out: true }), createPreference: never }));
+    const response = await handler(request({ planType: "founder", requestId: ID }));
+    assert.equal(response.status, 409); assert.equal((await response.json()).code, "founder_sold_out");
+  });
+  it("el webhook solo concilia el pago fundador si pago y pedido son de S/ 19", async () => {
+    const founder = (overrides) => order({ plan_type: "founder", amount: 19, ...overrides });
+    const ok = [];
+    let response = await createWebhookHandler(webhookDeps({ getOrder: async () => founder(), getPayment: async () => payment({ transaction_amount: 19 }), applyPayment: async (v) => { ok.push(v); } }))(signedRequest());
+    assert.equal(response.status, 200); assert.equal(ok.length, 1);
+    // Pagó 29 por un pedido fundador, o el pedido guarda otro monto: se rechaza sin acreditar.
+    for (const [getOrder, getPayment] of [[() => founder(), () => payment({ transaction_amount: 29 })], [() => founder({ amount: 29 }), () => payment({ transaction_amount: 19 })], [() => order({ amount: 29 }), () => payment({ transaction_amount: 19 })]]) {
+      let writes = 0;
+      response = await createWebhookHandler(webhookDeps({ getOrder: async () => getOrder(), getPayment: async () => getPayment(), applyPayment: async () => { writes++; } }))(signedRequest());
+      assert.equal(response.status, 422); assert.equal(writes, 0);
+    }
+  });
+});
+
 describe("webhook verificado", () => {
   it("firma oficial: recurso query en minúsculas, firma alterada rechazada", async () => {
     assert.equal(await verifySignature(signedRequest("ABC-123"), CONFIG.webhookSecret), true);
