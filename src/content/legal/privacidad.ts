@@ -90,7 +90,7 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
       "Supabase: guarda la base de datos y maneja el ingreso a tu cuenta. Sus servidores están en Estados Unidos.",
       "Mercado Pago: procesa los pagos de tu plan. Tus datos de pago los recibe directamente Mercado Pago, según sus propias reglas de privacidad. Puede tratarlos en Perú y en otros países.",
       "GitHub (GitHub Pages): publica la página de la app. Registra datos técnicos de conexión, como la IP. Sus servidores están en Estados Unidos.",
-      "[PROVEEDOR DE CORREO]: envía los correos de la cuenta (por ejemplo, recuperar tu clave). [PAÍS DEL PROVEEDOR DE CORREO].",
+      "Resend: envía los correos de la cuenta (por ejemplo, recuperar tu clave) y la copia de tu hoja de reclamación. Sus servidores están en Estados Unidos.",
       "Como algunos de estos servidores están fuera del Perú, hay una transferencia internacional de datos. Elegimos proveedores con medidas de seguridad reconocidas y les damos solo lo necesario.",
       "Solo entregaremos datos a una autoridad cuando la ley lo exija.",
     ],
