@@ -10,3 +10,8 @@ verify_jwt = false
 # entonces borra los datos de ESE usuario con service_role.
 [functions.borrar-cuenta]
 verify_jwt = false
+
+# Sin sesión: el Libro de Reclamaciones es público. Se protege con el origen,
+# el código exacto de la hoja, una ventana de 1 hora y el envío único.
+[functions.copia-reclamo]
+verify_jwt = false

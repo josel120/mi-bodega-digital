@@ -38,8 +38,8 @@
 
 export const TITULO = "Libro de Reclamaciones";
 
-/** Correo de contacto del proveedor. Dato pendiente que decide el dueño. */
-export const CORREO_CONTACTO = "[CORREO DE CONTACTO]";
+/** Correo de contacto del proveedor (decisión del dueño, 2026-10-09). */
+export const CORREO_CONTACTO = "josegomez120@gmail.com";
 
 /** Libro virtual gratuito de Indecopi: canal alternativo si nuestra hoja no se envía. */
 export const URL_TU_LIBRO = "https://consumidor.indecopi.gob.pe/tulibro/";

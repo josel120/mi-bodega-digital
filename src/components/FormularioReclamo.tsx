@@ -49,6 +49,8 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [canalAlterno, setCanalAlterno] = useState(false);
   const [constancia, setConstancia] = useState<Constancia | null>(null);
+  // null = todavía no sabemos; true solo si la función confirmó el envío.
+  const [copiaEnviada, setCopiaEnviada] = useState<boolean | null>(null);
 
   const cambiar = (nombre: string, valor: string) => {
     setValores((v) => ({ ...v, [nombre]: valor }));
@@ -89,6 +91,13 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
       }
       setConstancia({ codigo: respuesta.codigo, fecha: respuesta.fecha, datos: resultado.datos });
       window.scrollTo({ top: 0 });
+      // La hoja ya está registrada. La copia por correo es un extra: si falla,
+      // la constancia sigue valiendo y no se bloquea nada.
+      setCopiaEnviada(null);
+      supabase.functions
+        .invoke("copia-reclamo", { body: { codigo: respuesta.codigo } })
+        .then(({ data: r, error: e }) => setCopiaEnviada(!e && (r as { enviada?: unknown } | null)?.enviada === true))
+        .catch(() => setCopiaEnviada(false));
     } catch {
       setErrorMsg(mensajeErrorReclamo(null));
       setCanalAlterno(true);
@@ -115,6 +124,13 @@ export default function FormularioReclamo({ campos }: { campos: CampoReclamo[] }
         <p className="text-base mt-3">
           Guarda este número. Te respondemos por escrito en un plazo máximo de
           15 días hábiles por el medio que elegiste.
+        </p>
+        <p className="text-base mt-3" role="status">
+          {copiaEnviada === true
+            ? `Te enviamos una copia de esta hoja a ${constancia.datos.email}. Si no la ves, revisa la carpeta de spam.`
+            : copiaEnviada === false
+              ? `Tu hoja quedó registrada. La copia por correo a ${constancia.datos.email} puede demorar o no haber salido; igual puedes imprimir esta constancia.`
+              : "Estamos enviando una copia a tu correo…"}
         </p>
         <dl className="mt-4 text-base border-t border-slate-200 pt-3 space-y-2">
           {campos
