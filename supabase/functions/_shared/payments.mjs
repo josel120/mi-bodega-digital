@@ -101,7 +101,10 @@ export function createWebhookHandler(deps) {
       const refunded = Number(payment.transaction_amount_refunded ?? 0);
       if (!Number.isFinite(refunded) || refunded < 0) return reply(422, { error: "Reembolso inválido." });
       let state = payment.status;
-      if (state === "approved" && refunded > 0) state = "refunded";
+      // Solo una devolución total revoca el plan; una parcial lo mantiene
+      // pagado (política: meses no iniciados se devuelven proporcionalmente).
+      if (state === "approved" && refunded >= payment.transaction_amount) state = "refunded";
+      else if (state === "approved" && refunded > 0) console.warn(`Devolución parcial del pago ${id}: el pedido se mantiene pagado; revisar a mano.`);
       if (!["approved", "refunded", "charged_back"].includes(state)) return reply(200, { ignored: true });
       if (state === "approved" && !Number.isFinite(Date.parse(payment.date_approved ?? ""))) return reply(422, { error: "Falta fecha del pago." });
       await deps.applyPayment({ orderId: order.id, paymentId: id, state, approvedAt: payment.date_approved ?? null });

@@ -123,8 +123,8 @@ describe("webhook verificado", () => {
       assert.ok([200, 422].includes(response.status)); assert.equal(writes, 0);
     }
   });
-  it("aprobado y devolución parcial/full se envían a conciliación; pendiente no activa", async () => {
-    for (const [overrides, expected] of [[{}, "approved"], [{ status: "refunded" }, "refunded"], [{ transaction_amount_refunded: 10 }, "refunded"], [{ status: "charged_back" }, "charged_back"], [{ status: "pending" }, null]]) {
+  it("aprobado y devolución parcial mantiene pagado y la total revoca; se envían a conciliación; pendiente no activa", async () => {
+    for (const [overrides, expected] of [[{}, "approved"], [{ status: "refunded" }, "refunded"], [{ transaction_amount_refunded: 10 }, "approved"], [{ transaction_amount_refunded: 28.99 }, "approved"], [{ transaction_amount_refunded: 29 }, "refunded"], [{ status: "charged_back" }, "charged_back"], [{ status: "pending" }, null]]) {
       const writes = [];
       const response = await createWebhookHandler(webhookDeps({ getPayment: async () => payment(overrides), applyPayment: async (value) => { writes.push(value); } }))(signedRequest());
       assert.equal(response.status, 200); assert.equal(writes.length, expected ? 1 : 0);
