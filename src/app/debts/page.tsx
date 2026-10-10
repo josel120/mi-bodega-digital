@@ -337,7 +337,7 @@ export default function DebtsPage() {
         <button
           onClick={() => router.push("/dashboard")}
           aria-label="Volver a la Caja Diaria"
-          className="p-1.5 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
+          className="min-h-11 min-w-11 inline-flex items-center justify-center p-1.5 bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
         >
           <ArrowLeft className="w-5 h-5 text-white" />
         </button>
@@ -463,7 +463,7 @@ export default function DebtsPage() {
                     </div>
 
                     <div className="text-right">
-                      <p className="text-[10px] text-slate-400 font-semibold uppercase">
+                      <p className="text-xs text-slate-400 font-semibold uppercase">
                         Deuda
                       </p>
                       <p className="text-base font-extrabold text-rose-600">
@@ -498,7 +498,7 @@ export default function DebtsPage() {
                         );
                       }}
                       aria-expanded={selectedCustomerId === customer.id}
-                      className="flex-1 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors"
+                      className="flex-1 min-h-11 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-lg transition-colors"
                     >
                       Ajustar Deuda
                     </button>
@@ -506,7 +506,7 @@ export default function DebtsPage() {
                     <button
                       onClick={() => handleSendWhatsApp(customer)}
                       disabled={Number(customer.balance) <= 0}
-                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-40"
+                      className="flex-1 min-h-11 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1 disabled:opacity-40"
                     >
                       <Send className="w-3 h-3" /> Cobrar por WA
                     </button>
@@ -515,7 +515,7 @@ export default function DebtsPage() {
                   {/* Sub-formulario inline para Ajustar Deuda */}
                   {selectedCustomerId === customer.id && (
                     <div className="p-3 bg-white rounded-xl border border-slate-200 mt-2 space-y-2">
-                      <p className="text-[11px] font-bold text-slate-600">
+                      <p className="text-xs font-bold text-slate-600">
                         Abonar o sumar a la deuda:
                       </p>
                       <input
@@ -525,14 +525,14 @@ export default function DebtsPage() {
                         aria-label={`Monto a abonar o sumar para ${customer.customer_name}`}
                         value={adjustAmount}
                         onChange={(e) => setAdjustAmount(e.target.value)}
-                        className="w-full px-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        className="w-full px-3 min-h-11 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           disabled={submitting}
                           onClick={() => handleUpdateBalance(customer, true)}
-                          className="py-1.5 bg-rose-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                          className="min-h-11 bg-rose-500 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                         >
                           <Plus className="w-3 h-3" /> Fió más (+S/)
                         </button>
@@ -540,7 +540,7 @@ export default function DebtsPage() {
                           type="button"
                           disabled={submitting}
                           onClick={() => handleUpdateBalance(customer, false)}
-                          className="py-1.5 bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
+                          className="min-h-11 bg-emerald-600 text-white font-bold text-xs rounded-lg flex items-center justify-center gap-1 disabled:opacity-50"
                         >
                           <Minus className="w-3 h-3" /> Abonó (-S/)
                         </button>

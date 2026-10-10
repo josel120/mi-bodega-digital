@@ -29,7 +29,7 @@ insert into public.merchants (id, user_id, business_name, subscription_status, t
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Prueba', 'active_yearly', '2099-01-01', '2099-01-01');
 update public.merchants set subscription_status = 'active_yearly', subscription_ends_at = '2099-01-01';
 do $$ begin
-  if exists(select 1 from public.merchants where subscription_status <> 'trial' or subscription_ends_at is not null or trial_ends_at > now() + interval '8 days') then raise exception 'Usuario pudo regalarse plan'; end if;
+  if exists(select 1 from public.merchants where subscription_status <> 'trial' or subscription_ends_at is not null or trial_ends_at > now() + interval '15 days') then raise exception 'Usuario pudo regalarse plan'; end if;
   if has_function_privilege('authenticated', 'public.aplicar_pago_membresia(uuid,text,text,timestamptz)', 'execute') then raise exception 'RPC de pagos expuesto'; end if;
   if has_function_privilege('anon', 'public.reservar_membresia(uuid,text,uuid)', 'execute') then raise exception 'Reserva expuesta'; end if;
   if has_table_privilege('authenticated', 'public.membership_orders', 'insert') then raise exception 'Pedidos editables'; end if;

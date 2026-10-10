@@ -1,15 +1,17 @@
 // BORRADOR — requiere validación de abogado peruano antes de cobrar.
 //
-// Política de devoluciones y cancelación de Mi Bodega Digital. Preparado el 2026-10-06 por
-// legal-counsel (Gaia Nexus) a partir de la propuesta de clientes-y-ventas.md §6 y finanzas-y-legal.md §6.5.
+// Política de devoluciones y cancelación de Mi Bodega Digital. Texto de la decisión DEC-20261006-MBD-REFUND-RETENTION
+// (legal-counsel, Gaia Nexus, 2026-10-06; docs/legal/2026-10-06-mi-bodega-devoluciones-y-retencion.md).
 // No es asesoría legal. Los textos entre corchetes son datos pendientes que decide el dueño.
 //
 // Regla elegida (clara y favorable al consumidor; la aprueba el dueño):
 // - Cualquier pago: devolución total si se pide dentro de 7 días calendario desde ese pago.
 // - Anual, después de 7 días: devolución proporcional por meses completos no empezados
 //   (S/ 279 ÷ 12 = S/ 23,25 por mes). No se descuenta la comisión de Mercado Pago.
-// - Mensual y fundador, después de 7 días: sin devolución, salvo falla atribuible al servicio.
-// - Duplicado o cobro por error: devolución total, sin plazo.
+// - Mensual y fundador, después de 7 días: sin devolución del mes en curso; se cancela dejándolo vencer.
+// - Duplicado, monto distinto al publicado o falla nuestra: devolución (proporcional si es falla), sin plazo.
+// - No hay forma segura de sumar días sin un pago (la vigencia se deriva de pedidos pagados): no se ofrece.
+// - Solo el dueño ejecuta la devolución en Mercado Pago y emite la nota de crédito.
 // Hechos del código: una devolución o contracargo revoca ese pedido y recalcula la vigencia
 // (supabase/02-membresias-prepago.sql). Ojo, hallazgo S6 de seguridad: con pedidos apilados la
 // revocación puede dejar vigente un periodo de más; corregir antes de cobrar.
@@ -28,9 +30,9 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "En corto",
     parrafos: [
-      "Si pagaste y no te sirvió, pide tu dinero dentro de los 7 días desde tu pago y te lo devolvemos completo.",
-      "Si te cobramos dos veces o por error, te devolvemos siempre, sin importar la fecha.",
-      "Nunca te cobramos solos: para cancelar, basta con no renovar.",
+      "No te cobramos solos. Pagas un mes o un año y, si no renuevas, el plan termina en su fecha. No tienes que avisar a nadie.",
+      "¿Pagaste y no te sirvió? Pide tu plata dentro de los 7 días desde que pagaste y te la devolvemos completa. No tienes que explicar por qué.",
+      "Si te cobramos dos veces, te cobramos de más o la app no funcionó por culpa nuestra, te devolvemos siempre, sin importar la fecha.",
     ],
   },
   {
@@ -58,14 +60,14 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
   {
     titulo: "Plan mensual y precio fundador después de los 7 días",
     parrafos: [
-      "Pasados los 7 días no devolvemos el mes en curso, porque es corto y lo puedes dejar vencer sin costo.",
-      "La excepción es una falla nuestra: si por un problema del servicio no pudiste usar la app, te devolvemos la parte proporcional de los días sin servicio, o te sumamos esos días a tu plan, como prefieras.",
+      "Pasados los 7 días, el mes sigue hasta su fecha y no se devuelve. Como no hay cobro automático, basta con dejarlo vencer y no pagas más.",
+      "La excepción es una falla nuestra: si por un problema del servicio no pudiste usar la app, te devolvemos la parte proporcional de los días sin servicio.",
     ],
   },
   {
     titulo: "Cobros duplicados o por error",
     parrafos: [
-      "Si pagaste dos veces lo mismo, o te cobramos un monto distinto al publicado, te devolvemos la diferencia completa, sin plazo límite.",
+      "Si pagaste dos veces lo mismo, o te cobramos un monto distinto al publicado, te devolvemos la diferencia completa, sin importar la fecha.",
       "Si pagaste y tu plan no se activó, no vuelvas a pagar: toca «Revisar mi plan» o escríbenos y lo resolvemos.",
     ],
   },
@@ -73,9 +75,9 @@ export const SECCIONES: { titulo: string; parrafos: string[] }[] = [
     titulo: "Cómo pedir tu devolución",
     parrafos: [
       "Escríbenos a josegomez120@gmail.com desde el correo de tu cuenta, con el asunto «Devolución» y el número de operación de Mercado Pago si lo tienes.",
-      "Te respondemos en un máximo de [PLAZO PARA RESPONDER DEVOLUCIONES] días hábiles.",
-      "Devolvemos por el mismo medio con el que pagaste, a través de Mercado Pago. Cuánto tarda en verse en tu tarjeta o cuenta depende de Mercado Pago y de tu banco.",
-      "Si no estás conforme con la respuesta, puedes usar nuestro Libro de Reclamaciones virtual o acudir a Indecopi.",
+      "Te respondemos en 2 días hábiles.",
+      "La plata vuelve por Mercado Pago al mismo medio con el que pagaste. Tu banco puede demorar unos días en mostrarla.",
+      "Si no estás conforme, usa nuestro Libro de Reclamaciones en la app o acude a Indecopi.",
     ],
   },
   {
