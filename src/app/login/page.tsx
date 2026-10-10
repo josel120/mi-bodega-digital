@@ -41,7 +41,7 @@ export default function LoginPage() {
         if (authError) throw authError;
 
         if (authData.user) {
-          // 2. Creación automática del registro en la tabla 'merchants' con 7 días de Trial
+          // 2. Creación automática del registro en la tabla 'merchants' con 14 días de prueba
           const { error: merchantError } = await supabase
             .from("merchants")
             .insert([
@@ -123,7 +123,7 @@ export default function LoginPage() {
           <h1 className="text-2xl font-bold">Mi Bodega Digital</h1>
           <p className="text-emerald-100 text-sm mt-1">
             {isRegistering
-              ? "Crea tu cuenta con 7 días gratis"
+              ? "Crea tu cuenta con 14 días gratis"
               : "Ingresa a tu cuaderno de ventas"}
           </p>
         </div>
