@@ -4,12 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FunctionsHttpError } from "@supabase/supabase-js";
-import { AlertTriangle, CheckCircle2, ChevronRight, Loader2, Trash2, UserCog } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronRight, Loader2, Save, Trash2, UserCog } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { leerBodegaGuardada, sesionLocal } from "@/lib/merchant";
+import { guardarBodega, leerBodegaGuardada, loadMerchant, sesionLocal } from "@/lib/merchant";
 import { leerCola } from "@/lib/offline/cola";
 import { limpiarDispositivo } from "@/lib/dispositivo";
-import { CONFIRMACION_BORRADO, confirmacionValida, mensajeErrorBorrado } from "@/lib/cuenta";
+import {
+  CONFIRMACION_BORRADO,
+  NOMBRE_BODEGA_MAX,
+  confirmacionValida,
+  mensajeErrorBorrado,
+  normalizarYape,
+  validarNombreBodega,
+} from "@/lib/cuenta";
+import type { Merchant } from "@/types/database";
 import { ENLACES_LEGALES } from "@/components/PaginaLegal";
 import ErrorToast from "@/components/ErrorToast";
 
@@ -23,6 +31,13 @@ export default function CuentaPage() {
   const [correo, setCorreo] = useState<string | null>(null);
   const [bodega, setBodega] = useState<string | null>(null);
   const [sinSubir, setSinSubir] = useState(0);
+  const [merchant, setMerchant] = useState<Merchant | null>(null);
+  const [nombre, setNombre] = useState("");
+  const [yape, setYape] = useState("");
+  const [errNombre, setErrNombre] = useState<string | null>(null);
+  const [errYape, setErrYape] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+  const [guardado, setGuardado] = useState(false);
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [borrando, setBorrando] = useState(false);
@@ -39,10 +54,22 @@ export default function CuentaPage() {
         return;
       }
       const guardada = leerBodegaGuardada(user.id);
+      // Los datos de la bodega salen del servidor; sin señal, de lo guardado.
+      const { merchant: remota } = await loadMerchant(supabase, user.id).catch(() => ({
+        merchant: null,
+        error: null,
+      }));
+      if (!vivo) return;
+      const actual = remota ?? guardada;
+      if (actual) {
+        setMerchant(actual);
+        setNombre(actual.business_name);
+        setYape(actual.yape_number ?? "");
+      }
       const pendientes = guardada ? await leerCola(guardada.id).catch(() => []) : [];
       if (!vivo) return;
       setCorreo(user.email ?? null);
-      setBodega(guardada?.business_name ?? null);
+      setBodega(actual?.business_name ?? null);
       setSinSubir(pendientes.length);
       setCargando(false);
     }
@@ -51,6 +78,42 @@ export default function CuentaPage() {
       vivo = false;
     };
   }, [router, supabase]);
+
+  const guardarAjustes = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (guardando || !merchant) return;
+    const n = validarNombreBodega(nombre);
+    const y = normalizarYape(yape);
+    setErrNombre(n.ok ? null : n.error);
+    setErrYape(y.ok ? null : y.error);
+    setGuardado(false);
+    if (!n.ok || !y.ok) return;
+    setGuardando(true);
+    try {
+      const { data, error } = await supabase
+        .from("merchants")
+        .update({ business_name: n.valor, yape_number: y.valor })
+        .eq("id", merchant.id)
+        .select("*")
+        .single();
+      if (error || !data) {
+        // El formulario conserva lo escrito para reintentar.
+        setErrorMsg("No pudimos guardar los cambios. Revisa tu señal y vuelve a intentar.");
+        return;
+      }
+      const nueva = data as Merchant;
+      guardarBodega(nueva);
+      setMerchant(nueva);
+      setBodega(nueva.business_name);
+      setNombre(nueva.business_name);
+      setYape(nueva.yape_number ?? "");
+      setGuardado(true);
+    } catch {
+      setErrorMsg("No pudimos guardar los cambios. Revisa tu señal y vuelve a intentar.");
+    } finally {
+      setGuardando(false);
+    }
+  };
 
   const borrar = async () => {
     if (!confirmacionValida(texto) || borrando) return;
@@ -123,6 +186,78 @@ export default function CuentaPage() {
           {bodega && <p className="text-lg font-bold text-slate-900">{bodega}</p>}
           {correo && <p className="text-base text-slate-600 break-all">{correo}</p>}
         </section>
+
+        {merchant && (
+          <section className="bg-white rounded-2xl p-4 border border-slate-200/60" aria-labelledby="titulo-ajustes">
+            <h2 id="titulo-ajustes" className="text-base font-bold text-slate-900">
+              Datos de mi bodega
+            </h2>
+            <form onSubmit={(e) => void guardarAjustes(e)} className="mt-3 space-y-4" noValidate>
+              <div>
+                <label htmlFor="ajuste-nombre" className="block text-base font-semibold text-slate-800">
+                  Nombre de la bodega
+                </label>
+                <input
+                  id="ajuste-nombre"
+                  type="text"
+                  value={nombre}
+                  maxLength={NOMBRE_BODEGA_MAX + 20}
+                  onChange={(e) => {
+                    setNombre(e.target.value);
+                    setGuardado(false);
+                  }}
+                  aria-invalid={errNombre ? true : undefined}
+                  aria-describedby={errNombre ? "error-nombre" : undefined}
+                  className="mt-1 w-full min-h-11 px-3 text-base border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {errNombre && (
+                  <p id="error-nombre" className="mt-1 text-sm text-rose-700">
+                    {errNombre}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="ajuste-yape" className="block text-base font-semibold text-slate-800">
+                  Número de Yape / Plin (opcional)
+                </label>
+                <input
+                  id="ajuste-yape"
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="off"
+                  value={yape}
+                  onChange={(e) => {
+                    setYape(e.target.value);
+                    setGuardado(false);
+                  }}
+                  aria-invalid={errYape ? true : undefined}
+                  aria-describedby={errYape ? "error-yape" : "ayuda-yape"}
+                  className="mt-1 w-full min-h-11 px-3 text-base border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                {errYape ? (
+                  <p id="error-yape" className="mt-1 text-sm text-rose-700">
+                    {errYape}
+                  </p>
+                ) : (
+                  <p id="ayuda-yape" className="mt-1 text-sm text-slate-600">
+                    Es el número que sale en los cobros por WhatsApp.
+                  </p>
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={guardando}
+                className="w-full min-h-12 inline-flex items-center justify-center gap-2 text-base font-bold bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl disabled:opacity-50"
+              >
+                {guardando ? <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" /> : <Save className="w-5 h-5" aria-hidden="true" />}
+                {guardando ? "Guardando…" : "Guardar cambios"}
+              </button>
+              <p role="status" className="text-base font-semibold text-emerald-700 empty:hidden">
+                {guardado ? "Cambios guardados." : ""}
+              </p>
+            </form>
+          </section>
+        )}
 
         <section className="bg-white rounded-2xl border border-slate-200/60" aria-labelledby="titulo-docs">
           <h2 id="titulo-docs" className="text-base font-bold text-slate-900 px-4 pt-4 pb-2">
