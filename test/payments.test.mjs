@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { createCheckoutHandler, createWebhookHandler, verifySignature, validCheckoutUrl } from "../supabase/functions/_shared/payments.mjs";
+import { createCheckoutHandler, createWebhookHandler, verifySignature, validCheckoutUrl, logPaymentEvent } from "../supabase/functions/_shared/payments.mjs";
 import { paymentRuntime } from "../supabase/functions/_shared/runtime.mjs";
 import { checkoutUrl } from "../src/lib/checkout.ts";
 
@@ -157,4 +157,40 @@ it("adaptador REST autentica sesión y usa secretos solo en servicios del servid
   const runtime = paymentRuntime({ SUPABASE_URL: "https://project.supabase.co", SUPABASE_ANON_KEY: "public-key", SUPABASE_SERVICE_ROLE_KEY: "server-service-key", MERCADOPAGO_ACCESS_TOKEN: "server-mp-key", MERCADOPAGO_WEBHOOK_SECRET: CONFIG.webhookSecret, MERCADOPAGO_COLLECTOR_ID: "999", APP_URL: CONFIG.appUrl, PAYMENTS_ENABLED: "on", PAYMENTS_MODE: "live" }, fakeFetch);
   const response = await runtime.checkout(request()); assert.equal(response.status, 200);
   assert.equal(seen.length, 4); assert.ok(!(await response.text()).includes("server-service-key"));
+});
+
+describe("registro de fallos de pago sin PII (S5)", () => {
+  // Captura console.warn/error y comprueba campos presentes y ausencia de secretos/PII.
+  async function capture(fn) {
+    const lines = [], original = { warn: console.warn, error: console.error };
+    console.warn = console.error = (...args) => lines.push(args.join(" "));
+    try { await fn(); } finally { Object.assign(console, original); }
+    return lines.map((line) => JSON.parse(line));
+  }
+  const SECRETS = ["test-webhook-secret", "test-session", "server-mp-key", "ana@correo.pe", "Ana Quispe", "v1="];
+  const limpio = (lines) => { const text = JSON.stringify(lines); for (const secret of SECRETS) assert.ok(!text.includes(secret), secret); };
+
+  it("rechazo por importe/moneda/vendedor registra pedido, pago y motivo", async () => {
+    const casos = [[{ transaction_amount: 1 }, "importe"], [{ currency_id: "USD" }, "moneda"], [{ collector_id: 1 }, "vendedor"], [{ live_mode: false }, "modo"]];
+    for (const [cambio, motivo] of casos) {
+      const logs = await capture(() => createWebhookHandler(webhookDeps({ getPayment: async () => payment({ ...cambio, payer: { email: "ana@correo.pe", first_name: "Ana Quispe" } }) }))(signedRequest()));
+      assert.equal(logs.length, 1);
+      assert.deepEqual(logs[0], { event: "webhook_rejected", orderId: ID, paymentId: "123", reason: motivo, status: "422" });
+      limpio(logs);
+    }
+  });
+  it("excepción del webhook y del checkout registran solo el nombre del error", async () => {
+    const boom = () => { throw new TypeError("fallo con ana@correo.pe Ana Quispe test-webhook-secret"); };
+    let logs = await capture(() => createWebhookHandler(webhookDeps({ applyPayment: boom }))(signedRequest()));
+    assert.deepEqual(logs[0], { event: "webhook_failed", orderId: ID, paymentId: "123", reason: "excepcion", status: "503", errorName: "TypeError" });
+    limpio(logs);
+    logs = await capture(() => createCheckoutHandler(checkoutDeps({ createPreference: boom }))(request()));
+    assert.deepEqual(logs[0], { event: "checkout_failed", orderId: ID, reason: "excepcion", errorName: "TypeError" });
+    limpio(logs);
+  });
+  it("la lista cerrada descarta campos extra y valores que no parecen identificadores", () => {
+    const lines = [];
+    logPaymentEvent("x", { orderId: "ana@correo.pe", paymentId: "123", email: "ana@correo.pe", token: "abc", reason: "Ana Quispe" }, (l) => lines.push(JSON.parse(l)));
+    assert.deepEqual(lines[0], { event: "x", orderId: "[omitido]", paymentId: "123", reason: "[omitido]" });
+  });
 });
