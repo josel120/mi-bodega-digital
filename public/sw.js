@@ -12,7 +12,7 @@
 //
 // Sube CACHE_VERSION cada vez que quieras forzar una limpieza de caché.
 
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const CACHE_NAME = `bodega-digital-${CACHE_VERSION}`;
 const BASE = "/mi-bodega-digital";
 const FALLBACK = `${BASE}/dashboard/`;
@@ -108,8 +108,13 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          // Solo guardamos respuestas buenas. Si guardáramos un 404 o un 5xx,
+          // sin señal le mostraríamos esa página de error en vez del
+          // dashboard que sí funcionaba la última vez.
+          if (response.ok) {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          }
           return response;
         })
         .catch(async () => {
@@ -135,8 +140,11 @@ self.addEventListener("fetch", (event) => {
         (cached) =>
           cached ||
           fetch(request).then((response) => {
-            const copy = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            // Igual que arriba: un error guardado aquí se serviría para siempre.
+            if (response.ok) {
+              const copy = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+            }
             return response;
           })
       )
