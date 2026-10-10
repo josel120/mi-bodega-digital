@@ -44,6 +44,12 @@ jobs:
       - run: psql -h localhost -U postgres -d payments_test -f test/payment-schema.sql
         env:
           PGPASSWORD: ci-only
+      # S1: aislamiento A/B de RLS con usuarios sintéticos y mutaciones de políticas (base propia).
+      - run: |
+          psql -h localhost -U postgres -d postgres -c 'create database rls_test'
+          psql -h localhost -U postgres -d rls_test -f test/rls-schema.sql
+        env:
+          PGPASSWORD: ci-only
       # Base nueva: el fixture crea roles y el esquema auth simulado desde cero.
       - run: |
           psql -h localhost -U postgres -d postgres -c 'create database cuenta_test'
