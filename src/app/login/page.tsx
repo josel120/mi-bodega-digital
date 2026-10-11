@@ -9,6 +9,7 @@ import { createClient } from "@/lib/supabase/client";
 import { BASE_PATH } from "@/lib/base-path";
 import { traducirErrorAuth } from "@/lib/auth-errores";
 import { ENLACES_LEGALES } from "@/components/PaginaLegal";
+import { aceptoLegalValido, construirConsentimiento } from "@/lib/consentimiento";
 
 export default function LoginPage() {
   const [isRegistering, setIsRegistering] = useState(false);
@@ -16,10 +17,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [yapeNumber, setYapeNumber] = useState("");
+  const [aceptoLegal, setAceptoLegal] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
+  const [errorLegal, setErrorLegal] = useState<string | null>(null);
 
   const router = useRouter();
   const supabase = createClient();
@@ -32,6 +35,18 @@ export default function LoginPage() {
 
     try {
       if (isRegistering) {
+        // Sin la casilla marcada no se llama a signUp: no hay registro sin
+        // constancia de que leyó y aceptó los Términos y el Aviso de
+        // privacidad (Ley 29733).
+        if (!aceptoLegalValido(aceptoLegal)) {
+          setErrorLegal(
+            "Marca la casilla para continuar: debes leer y aceptar los Términos y condiciones y el Aviso de privacidad.",
+          );
+          setLoading(false);
+          return;
+        }
+        setErrorLegal(null);
+
         // 1. Registro de usuario en Supabase Auth. El enlace del correo de
         // confirmación tiene que volver con el prefijo de GitHub Pages; sin
         // él, Supabase manda a la raíz del dominio y el enlace da 404.
@@ -41,6 +56,9 @@ export default function LoginPage() {
             password,
             options: {
               emailRedirectTo: `${window.location.origin}${BASE_PATH}/dashboard/`,
+              // Constancia del consentimiento: cuándo aceptó y qué versión de
+              // cada documento legal. Nada de datos personales extra.
+              data: construirConsentimiento(new Date().toISOString()),
             },
           },
         );
@@ -162,6 +180,7 @@ export default function LoginPage() {
               setIsRegistering(false);
               setErrorMsg(null);
               setInfoMsg(null);
+              setErrorLegal(null);
             }}
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${
               !isRegistering
@@ -177,6 +196,7 @@ export default function LoginPage() {
               setIsRegistering(true);
               setErrorMsg(null);
               setInfoMsg(null);
+              setErrorLegal(null);
             }}
             className={`flex-1 py-3 text-sm font-semibold transition-colors ${
               isRegistering
@@ -274,6 +294,54 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {isRegistering && (
+            <div>
+              <label
+                htmlFor="acepto-legal"
+                className="flex items-start gap-3 min-h-11 py-1 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  id="acepto-legal"
+                  checked={aceptoLegal}
+                  onChange={(e) => {
+                    setAceptoLegal(e.target.checked);
+                    if (e.target.checked) setErrorLegal(null);
+                  }}
+                  aria-invalid={errorLegal ? true : undefined}
+                  aria-describedby={errorLegal ? "acepto-legal-error" : undefined}
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 text-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <span className="text-base text-slate-600 leading-relaxed">
+                  Leí y acepto los{" "}
+                  <Link
+                    href="/terminos"
+                    target="_blank"
+                    rel="noopener"
+                    className="font-semibold text-emerald-700 underline underline-offset-2"
+                  >
+                    Términos y condiciones
+                  </Link>{" "}
+                  y el{" "}
+                  <Link
+                    href="/privacidad"
+                    target="_blank"
+                    rel="noopener"
+                    className="font-semibold text-emerald-700 underline underline-offset-2"
+                  >
+                    Aviso de privacidad
+                  </Link>
+                  .
+                </span>
+              </label>
+              {errorLegal && (
+                <p id="acepto-legal-error" role="alert" className="mt-1 text-sm text-red-600">
+                  {errorLegal}
+                </p>
+              )}
+            </div>
+          )}
+
           <button
             type="submit"
             disabled={loading}
@@ -290,20 +358,6 @@ export default function LoginPage() {
               </>
             )}
           </button>
-
-          {isRegistering && (
-            <p className="text-base text-slate-600 text-center leading-relaxed">
-              Al registrarte aceptas los{" "}
-              <Link href="/terminos" className="font-semibold text-emerald-700 underline underline-offset-2">
-                Términos y condiciones
-              </Link>{" "}
-              y el{" "}
-              <Link href="/privacidad" className="font-semibold text-emerald-700 underline underline-offset-2">
-                Aviso de privacidad
-              </Link>
-              .
-            </p>
-          )}
 
           {!isRegistering && (
             <button
